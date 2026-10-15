@@ -1,0 +1,13 @@
+{
+  "name": "levifsr-shader-validate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Validates the LeviFSR AI GLSL ES 3.00 shaders with glslang",
+  "type": "module",
+  "scripts": {
+    "validate": "node validate.mjs"
+  },
+  "dependencies": {
+    "@webgpu/glslang": "^0.0.15"
+  }
+}

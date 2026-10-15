@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "id": "levifsr_ai",
+  "name": "LeviFSR AI",
+  "author": "LeviFSR AI",
+  "version": "1.0.0",
+  "description": "Reduced internal render resolution with an edge adaptive reconstruction pass, adaptive dynamic resolution and low latency frame pacing for Minecraft Bedrock on Mali and Adreno GPUs.",
+  "type": "preload-native",
+  "entry": "liblevifsr_ai.so",
+  "minecraft_versions": [],
+  "overwrite_files": ["config/config.schema.json"],
+  "overwrite_folders": []
+}
