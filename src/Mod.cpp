@@ -8,7 +8,9 @@
 #include <chrono>
 #include <mutex>
 #include <vector>
-#include <charconv>
+#include <cerrno>
+#include <cstdlib>
+#include <string>
 
 namespace {
 namespace bt = bedrocktools;
@@ -104,9 +106,12 @@ class AdaptiveAim {
             (key=="adaptive"?settings.adaptive:settings.head)=value=="true";
             return;
         }
-        float number=0;
-        auto result=std::from_chars(value.data(),value.data()+value.size(),number);
-        if(result.ec!=std::errc{} || result.ptr!=value.data()+value.size() || !std::isfinite(number)) return;
+        if(value.empty() || value.size()>64) return;
+        const std::string text(value);
+        char* end=nullptr;
+        errno=0;
+        const float number=std::strtof(text.c_str(), &end);
+        if(errno==ERANGE || end==text.c_str() || end!=text.c_str()+text.size() || !std::isfinite(number)) return;
         if(key=="fov") settings.fov=std::clamp(number,1.f,20.f);
         if(key=="range") settings.range=std::clamp(number,1.f,6.f);
         if(key=="response") settings.response=std::clamp(number,1.f,12.f);
