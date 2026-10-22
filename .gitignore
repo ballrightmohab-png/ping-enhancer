@@ -1,0 +1,6 @@
+build/
+.xmake/
+.external/
+__pycache__/
+*.so
+*.levipack

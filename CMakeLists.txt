@@ -1,0 +1,20 @@
+cmake_minimum_required(VERSION 3.22)
+project(AdaptiveAim LANGUAGES CXX)
+if(NOT ANDROID OR NOT CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+    message(FATAL_ERROR "Build with the Android NDK toolchain and ANDROID_ABI=arm64-v8a")
+endif()
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+include(FetchContent)
+FetchContent_Declare(preloader
+    GIT_REPOSITORY https://github.com/LiteLDev/preloader-android.git
+    GIT_TAG 5d108da350ce3e7f13f51415f81e65344ecd5d14)
+FetchContent_Declare(bedrocktools
+    GIT_REPOSITORY https://github.com/QYCottage/BedrockTools.git
+    GIT_TAG b0ed3e9a0e5cb598dc5c93f22e5f159de80d5d95
+    SOURCE_SUBDIR unused-cmake-subdirectory)
+FetchContent_MakeAvailable(preloader bedrocktools)
+add_library(AdaptiveAim SHARED src/Mod.cpp)
+target_include_directories(AdaptiveAim PRIVATE "${bedrocktools_SOURCE_DIR}/include")
+target_link_libraries(AdaptiveAim PRIVATE preloader dl log android)
+target_link_options(AdaptiveAim PRIVATE "-Wl,-z,max-page-size=16384")
