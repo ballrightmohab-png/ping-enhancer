@@ -106,3 +106,13 @@ requires first-person crosshair control mode; touch tap-picking is not assumed
 to provide a centre ray. New synthetic tests deliberately separate camera and
 body orientation, use swapped/inverted/scaled axes and assert ray/target overlap.
 These are controller tests, not a rendered Android crosshair verification.
+
+## Version 0.8.1 — strict pick-ray regression
+
+Device report: 0.8.0 paused with "use first-person crosshair controls" despite
+those controls already being active. Invalid ray data was incorrectly treated as
+proof of the wrong control mode. The strict dependency is removed: an unavailable
+ray selects first-person actor rotation with bounded response calibration.
+Status identifies the feedback source. Regression tests cover all-zero pick-ray
+tracking and frozen fallback rotation; actual device camera/rotation agreement
+remains unverified. This supersedes 0.8.0's invalid-ray hard pause.

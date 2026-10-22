@@ -149,14 +149,34 @@ int main() {
     assert(headDesired);
     assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*headDesired))<1.f);
     assert(crosshairHits());
-    // Invalid/no view ray must not fall back to stale BODY orientation.
+    // Regression: missing pick-ray data no longer blocks first-person tracking.
     fakehost::publishView=false;
     sdk::ViewRay emptyRay{};
     std::memcpy(level.data()+sdk::offsets::Level::mHitResultWrapper,&emptyRay,sizeof(emptyRay));
+    local.rotation=fakehost::cameraPose;
+    // A frozen fallback must fail calibration after one bounded probe, not spin.
     before=fakehost::turns;
-    for(int i=0;i<5;++i) tick();
+    for(int i=0;i<110;++i) tick();
+    assert(fakehost::turns==before+1);
+    before=fakehost::turns;
+    for(int i=0;i<10;++i) tick();
     assert(fakehost::turns==before);
-    // A world pick ray in the air is enough; no existing hit on the mob is needed.
+    // Normal first-person rotation does update: calibrate and converge with the
+    // same swapped/inverted/scaled native axes, even with an all-zero pick ray.
+    fakehost::freezeBody=false;
+    fakehost::cameraPose={}; local.rotation={}; fakehost::pendingCamera={};
+    toggle(moduleId,false); toggle(moduleId,true);
+    for(int i=0;i<260;++i) tick();
+    assert(fakehost::turns>before+2);
+    assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*headDesired))<1.f);
+    // Compare the actual synthetic camera against the entity, not a pick-ray fixture.
+    constexpr float rad=3.14159265358979323846f/180.f;
+    const float yaw=fakehost::cameraPose.y*rad, pitch=fakehost::cameraPose.x*rad;
+    const float dz=std::cos(yaw)*std::cos(pitch);
+    const float hitX=-std::sin(yaw)*std::cos(pitch)*3.f/dz;
+    const float hitY=1.68f-std::sin(pitch)*3.f/dz;
+    assert(hitX>=chicken.bounds.min.x && hitX<=chicken.bounds.max.x);
+    assert(hitY>=chicken.bounds.min.y && hitY<=chicken.bounds.max.y);
     // The master switch prevents new requests even while idle tracking is active.
     toggle(moduleId,false);
     before=fakehost::turns;

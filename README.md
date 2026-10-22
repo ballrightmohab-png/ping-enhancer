@@ -1,4 +1,4 @@
-# Adaptive Aim 0.8.0 — standalone LeviLauncher mod
+# Adaptive Aim 0.8.1 — standalone LeviLauncher mod
 
 **BedrockTools is no longer required, installed, loaded, fetched or queried.**
 This is a native Android ARM64 mod for LeviLaunchroid. It uses the launcher's
@@ -32,7 +32,7 @@ Open the launcher mod menu → **Auto Target Tracking**:
 - **Aim cone**: 1–180°, default 60, measured in both pitch and yaw.
 - **Range**: 1–6 blocks, default 4.
 - **Auto-calibrate camera axes**: on by default. Two small isolated probes learn
-  axis order, sign and gain from changes in the game view ray. Keep the camera
+  axis order, sign and gain from changes in the active view feedback. Keep the camera
   still briefly during calibration. Missing/unstable response pauses calibration.
 - **Camera input: yaw first (advanced)**: only used with auto-calibration OFF; off by default, matching frame-gen
   source's pitch-first convention; on selects yaw-first. Android axis order is not yet device-verified. If it
@@ -216,8 +216,8 @@ revision replaces the assumption that body rotation equals the camera view:
 - Reads the embedded game `HitResult` ray's origin/direction (`Level + 456`,
   start @0, direction @12). These are version-specific layout assumptions;
   direction validity and proximity to the player are checked. It does not need
-  an existing entity hit to form a direction. Invalid rays pause tracking rather
-  than falling back to potentially stale body orientation.
+  an existing entity hit to form a direction. Version 0.8.0 paused on invalid rays;
+  **0.8.1 supersedes that behaviour with a calibrated first-person fallback**.
 - Measures the target point from that ray origin, and angular error from its
   direction. Torso/head target points remain inside the entity bounding box.
 - Default auto-calibration submits two tiny isolated native-input probes and
@@ -231,10 +231,11 @@ revision replaces the assumption that body rotation equals the camera view:
 
 **Touch test:** use **first-person, centre-crosshair aiming controls**, not the
 classic tap-to-interact cursor. The stored pick ray must correspond to the
-centre crosshair. This mod does not force a control scheme or prove that every
-Android touch mode supplies that same ray; arbitrary tap-cursor targeting and
-third-person parallax are not claimed as supported. If the ray does not update,
-tracking/calibration pauses with a status message rather than guessing.
+centre crosshair when used. This mod does not force a control scheme or prove
+that every Android touch mode supplies that same ray; arbitrary tap-cursor
+targeting and third-person parallax are not claimed as supported. In 0.8.1,
+unusable ray data selects a first-person rotation fallback. If that feedback
+also fails to respond, calibration pauses rather than issuing repeated probes.
 
 Host tests now freeze the synthetic body at the WRONG angle while updating a
 separate camera/view ray. With swapped, inverted, differently-scaled input axes,
@@ -243,3 +244,25 @@ bounding box, including after physical look input and in head/torso modes.
 Additional tests check eight sign/order combinations, response timeouts, manual
 look invalidation, and invalid-ray pausing. **Actual device alignment remains
 unverified until the user tests this build.**
+
+## 0.8.1 — missing pick ray no longer blocks all movement
+
+The user reports the 0.8.0 "use first-person crosshair controls" message despite
+already using those controls. That message was an incorrect inference from
+invalid ray data, NOT a real control-mode check. The strict ray requirement
+caused a no-movement regression.
+
+On unusable ray data, 0.8.1 now uses the player's first-person pitch/yaw component
+and estimates eye origin from player bounds. Axis/sign/gain calibration still
+applies by default; this is not a return to the uncalibrated 0.7 controller.
+The selected fallback remains active until a menu/config/master/world reset to
+avoid repeatedly changing coordinate sources as pick data becomes available.
+Status text identifies `[view ray]` or `[first-person rotation fallback]`.
+
+A new runtime regression converges onto a chicken with an **all-zero pick ray**,
+using swapped, inverted, differently-scaled camera input. It also verifies that
+stale rotation causes one bounded probe followed by calibration failure, rather
+than uncontrolled turning. Android alignment is still device-unverified; if
+actor rotation is not camera-aligned on this build, the fallback cannot promise
+centre-crosshair alignment. No automatic third-person/control-mode detection is
+implemented.
