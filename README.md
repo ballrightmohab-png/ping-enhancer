@@ -1,136 +1,117 @@
-# Adaptive Aim — experimental LeviLauncher companion
+# Adaptive Aim 0.4.0 — standalone LeviLauncher mod
 
-Native C++20 aim-assist-only source for LeviLaunchroid (Android ARM64).
-**ARM64 package compiled successfully; in-game behavior is not yet tested.**
-Requires a matching **BedrockTools** runtime.
+**BedrockTools is no longer required, installed, loaded, fetched or queried.**
+This is a native Android ARM64 mod for LeviLaunchroid. It uses the launcher's
+own preloader interface for its menu, signature scans and hook chains.
 
-## Download the built mod
+## Download / install
 
-[Download AdaptiveAim-arm64.zip](https://github.com/ballrightmohab-png/ping-enhancer/actions/runs/39806061831/artifacts/12438051936)
-(GitHub sign-in may be required; Actions artifacts expire.) Extract
-`AdaptiveAim.levipack` from the ZIP and import it into LeviLauncher. This is an
-experimental build, not a promise of compatibility or ban safety.
-No undetectability, anti-cheat bypass, or ban-safety claims. Use only where the
-world/server owner permits assistance.
+Use **AdaptiveAim-arm64** from the latest successful
+[Build Adaptive Aim run](https://github.com/ballrightmohab-png/ping-enhancer/actions?query=workflow%3A%22Build+Adaptive+Aim%22+branch%3Aarena%2Fc393d2bc-ping-enhancer).
+Extract `AdaptiveAim.levipack` from the artifact ZIP, replace the old Adaptive Aim
+package, and restart Minecraft through LeviLauncher. You can disable/uninstall
+BedrockTools; this mod does not call it. GitHub sign-in may be required for artifacts.
 
-## Features
+**Compatibility is version-specific.** The current bundled layout constants and
+byte patterns originate from a source snapshot whose manifest declares Minecraft
+`1.26.5X.X`. This is not a promise of support for all game versions. Missing
+signatures prevent hook installation; matching signatures alone do not guarantee
+matching layouts. Actual Android gameplay must still be verified on-device.
+No undetectability or ban-safety claim. Use only where assistance is permitted.
 
-- One module in LeviLauncher's native mod menu, using the same `ModuleBuilder`
-  and `ConfigType::Toggle` API used by BedrockTools.
-- Disabled by default; head toggle off means torso, on means head.
-- **Aim strength (%)** slider from 0–100 (default 50). Zero applies no assist;
-  higher values scale the smoothed turn up to the maximum-turn cap.
-- Adaptive exponential slowdown near the target; bounded turn speed,
-  configurable cone (20° default, up to 60°) and short configurable range.
-- Independent **Target players** (default on) and **Target mobs** (default off)
-  switches; invisible targets excluded; no auto-click, reach,
-  packet manipulation, ESP, or extra gameplay modules in this library.
-- Solid-voxel obstruction check; pauses for chat/container screens reported by
-  BedrockTools. No actor pointers kept between ticks.
+## Controls
 
-## Build
+Open the launcher mod menu → **Adaptive Aim**:
 
-Requirements: Android NDK r28c, xmake, Python 3, Git; an Android ARM64 device for
-validation. The build requires network access for upstream dependencies.
+- Master switch: disabled by default.
+- **Target players**: on by default.
+- **Target mobs**: off by default. Enable for chickens/other mobs.
+- **Aim strength (%)**: 0–100, default 50. Zero means no assist.
+- **Aim at head**: off = torso, on = head (bounding-box fractions, not skeletons).
+- **Adaptive slowdown**: slows near the aim point.
+- **Aim cone**: 1–60°, default 20, measured in both pitch and yaw.
+- **Range**: 1–6 blocks, default 4.
+- **Maximum turn**: 5–90°/second, default 70; strength scales the resulting turn.
+
+No auto-clicking, reach, packets, ESP or extra gameplay modules. The Mob category
+bit distinguishes mobs from items/projectiles. Players follow only the players
+switch, even when they also carry the Mob category.
+Settings reset on native mod disable/reload; custom disk persistence is not implemented.
+
+## Standalone implementation
+
+`src/game/Runtime.hpp` batches scans of `libminecraftpe.so` using the launcher
+scanner. It owns five launcher-managed hooks: local-player normal tick plus
+chat/container open/close. Screen controllers are tracked independently so a
+nested close does not accidentally re-enable aiming. The original game routines
+are still called. Hook installation rolls back on failure, and disable removes
+all owned hooks. There is no BedrockTools event bus, API lookup or dependency.
+
+The monitor retries incomplete scans/installation every two seconds while the
+module is enabled at the native lifecycle level. The live HUD distinguishes
+missing signatures, absent world ticks, disabled filters, range/cone rejection,
+solid obstructions and a commanded turn with no immediate camera change.
+Camera changes may be deferred by the game or other mods, so that last message
+is a diagnostic, not proof of a broken ABI.
+
+## Quick chicken check
+
+Enable the master switch and **Target mobs**; set strength to 100 and cone to 60.
+Stand 2–3 blocks from a chicken in clear view, aim near it, and close the menu.
+If it does not turn, report the live status and exact Minecraft and LeviLauncher
+versions. Looking horizontally above a small mob can put it outside the aim cone.
+Do not try to compensate for incompatible game layouts with slider settings.
+
+## Build (Android NDK r28c)
+
+Requires CMake 3.22+, Ninja, Git, Python 3 and Android NDK r28c. The launcher
+preloader source and its own dependencies are fetched during configuration.
+**No BedrockTools checkout or SDK download is involved.**
 
 ```sh
-sh scripts/fetch-sdk.sh
-xmake f -y -p android -a arm64-v8a -m release --ndk=/path/to/android-ndk-r28c
-xmake -y
-# Substitute the actual path printed by xmake:
-python3 scripts/package.py build/android/arm64-v8a/release/libAdaptiveAim.so build/AdaptiveAim.levipack
+cmake -S . -B build/android -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build/android --target AdaptiveAim --parallel 2
+python3 scripts/package.py build/android/libAdaptiveAim.so build/AdaptiveAim.levipack
 ```
 
-Enable BedrockTools first, then import/enable AdaptiveAim.
-Open LeviLauncher's mod menu → **Adaptive Aim** to see **Target players**,
-**Target mobs**, and **Aim strength (%)**, plus the head/adaptive controls.
-The menu registers even when the runtime is missing or not ready; actual
-assistance still fails closed. A background monitor retries connecting every
-500 ms. An on-screen status explains missing API/signatures, absent ticks,
-filter/range/cone rejection, blocked targets, or a commanded camera turn that
-produced no immediate rotation change. This last check is diagnostic only:
-some camera implementations may defer the rotation update.
-No dependency ordering is assumed or silently bypassed.
-Settings currently reset when the module is disabled/reloaded; custom on-disk
-persistence is not implemented.
+Alternative xmake configuration is provided in `xmake.lua`.
+Preloader is pinned to `5d108da350ce3e7f13f51415f81e65344ecd5d14`.
 
-## Compatibility / limitations
-
-- SDK pinned to BedrockTools `b0ed3e9a0e5cb598dc5c93f22e5f159de80d5d95`
-  (its manifest declares Minecraft `1.26.5X.X`). Preloader build pinned to
-  `5d108da350ce3e7f13f51415f81e65344ecd5d14`.
-- Matching API ABI alone does **not** guarantee matching game layouts. Do not
-  use with another BedrockTools/game build without porting and device testing.
-- Direct calls to upstream version-specific actor/turn signatures need actual
-  device verification. GitHub Actions successfully compiled and linked this
-  module with NDK r28c and packaged it as a LeviPack. Minecraft runtime/gameplay
-  validation remains unverified. Successful build: Actions run `39806061831`.
-- Obstruction checks use solid-block voxels, not exact collision shapes. Glass,
-  fluids, partial blocks, and entities may differ from visual line of sight.
-- Mobs use the same category bit (2) as upstream BedrockTools Hitbox, not simply
-  "anything that is not a player"; players obey only the players switch.
-- Head/torso points are bounding-box fractions, not skeletal hitboxes. No team,
-  friend, spectator/death filtering or target-lock hysteresis yet.
-- The narrowest angular candidate is selected every tick; crowded targets may
-  cause switching. Other camera mods can change the applied turn behavior.
-- Only chat and container events gate aim; pause/menu coverage requires further
-  device testing. Assistance runs while enabled, not only while attacking.
-- BedrockTools itself includes other modules: disable those in its own menu if
-  you want only aim assistance active. This is a companion, not a standalone SDK fork.
-
-## Host tests
+## Tests and limitations
 
 ```sh
 mkdir -p build
 c++ -std=c++20 -Wall -Wextra -Werror -Isrc tests/aim_test.cpp -o build/aim_test
 ./build/aim_test
 python3 -m unittest discover -s tests -p 'test_*.py'
+# After CMake fetched the launcher headers:
+for test in menu hooks runtime; do
+  c++ -std=c++20 -Wall -Wextra -Werror -Itests/stubs \
+    -Ibuild/android/_deps/preloader-src/include \
+    tests/${test}_test.cpp -ldl -pthread -o build/${test}_test
+  ./build/${test}_test
+done
 ```
 
-Math/settings tests cover yaw wrap, headward pitch, invalid coordinates, speed caps,
-zero error, update-frequency equivalence, independent target switches and slider
-validation. The CI host menu test uses real upstream menu headers and a stub
-Android lifecycle to check controls remain registered without BedrockTools,
-including toggling and reload. These do not validate Minecraft
-ABI calls or in-game camera behavior.
+Host tests fake the launcher scanner/hook backend, not another mod's API. They
+exercise late game availability, missing signatures, hook rollback, nested UI
+screens, cleanup/re-enable and chicken-sized targeting through the installed
+tick detour. They also cover independent target toggles, zero strength, range/cone
+and obstruction rejection, yaw wrapping and turn caps. CI checks the Android
+ELF dynamic table/symbols for an unwanted BedrockTools dependency.
 
-## Upstream references and license
+These are **not real-device compatibility tests**. The collision check uses
+solid voxels, not exact shapes; glass/partial blocks may differ from visibility.
+There is no friend/team/spectator/death filter or target-lock hysteresis. Nearby
+crowded targets may switch. Only reported chat/container lifecycles pause aim;
+other pause/menu coverage requires device validation. Other camera mods may
+modify the turn behavior. No broad version support or gameplay success claimed.
 
-Studied [QYCottage/BedrockTools](https://github.com/QYCottage/BedrockTools),
-particularly `src/launcher/ModuleMenu.cpp`, `include/bedrocktools/Api.hpp`, SDK
-wrappers, and its packaging script; and
-[LiteLDev/preloader-android](https://github.com/LiteLDev/preloader-android).
-SDK headers are fetched separately and not vendored. The pinned BedrockTools LICENSE file is MIT (its README says GPL-3.0,
-which is inconsistent). The included LICENSE preserves its MIT notice.
-Review upstream licensing before distributing modified SDK code.
+## Credits
 
-## Version 0.2.0
-
-Fixes missing menu controls when the runtime is unavailable at module enable.
-Adds independent player/mob switches and a 0–100% strength slider. Controls
-register before dependency attachment; switching on retries attachment.
-The download above is the successfully compiled 0.2.0 artifact, including
-these fixes. In-game UI/behavior still needs device verification.
-
-## Version 0.3.0 — chicken test / runtime diagnostics
-
-- Reconnect automatically if the matching BedrockTools API or signatures become
-  available after this mod starts. The companion still REQUIRES that runtime;
-  it does not implement standalone Minecraft hooks.
-- Live status at the upper-left distinguishes missing runtime, missing signatures,
-  no world ticks, no enabled targets, range/cone rejection and solid obstructions.
-- Aim cone now defaults to 20°, adjustable to 60° (previously capped at 20°).
-- Host integration test loads a synthetic runtime AFTER enabling aim, delivers
-  world tick events and checks a downward turn for a chicken-sized bounding box.
-  It also checks mob/player toggles, strength zero, obstruction and cone rejection.
-  This tests our event-to-turn wiring, NOT real Minecraft ABI/camera behavior.
-
-### In-game check
-
-Install a matching BedrockTools build, enable **Adaptive Aim**, **Target mobs**,
-set strength to 100 and cone to 60, and stand 2–3 blocks from a chicken in clear
-view. Point near the chicken, close the menu and read the status. A narrow cone
-is measured in pitch AND yaw: looking horizontally above a chicken can exclude it.
-If it still fails, report the status text plus exact Minecraft, LeviLauncher and
-BedrockTools versions. Mismatched offsets/signatures cannot be fixed by sliders.
-Do not use a runtime that lacks `BedrockTools_GetApi` ABI v1.
+Bundled layout constants and byte patterns were adapted from BedrockTools
+revision `b0ed3e9a0e5cb598dc5c93f22e5f159de80d5d95`, but that project is no longer a
+dependency. See `THIRD_PARTY_NOTICES.md` and the preserved MIT notice in LICENSE.

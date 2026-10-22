@@ -1,9 +1,6 @@
 #include "Aim.hpp"
 #include "Settings.hpp"
-#include <bedrocktools/Api.hpp>
-#include <bedrocktools/events/RuntimeListener.hpp>
-#include <bedrocktools/sdk/Functions.hpp>
-#include <bedrocktools/sdk/world/Actor.hpp>
+#include "game/Runtime.hpp"
 #include <pl/Mod.hpp>
 #include <pl/ModMenu.hpp>
 #include <chrono>
@@ -17,20 +14,21 @@
 #include <atomic>
 
 namespace {
-namespace bt = bedrocktools;
-namespace sdk = bt::sdk;
+namespace sdk = game;
 using Clock = std::chrono::steady_clock;
 constexpr auto moduleId = "adaptiveaim.assist";
 class AdaptiveAim {
     std::mutex mutex;
     aim::Settings settings;
     std::mutex runtimeMutex;
-    bool chat=false, container=false;
+    bool uiBlocked=false;
+    game::Runtime runtime;
+    Clock::time_point lastResolve{};
     std::thread monitor;
     std::mutex monitorMutex;
     std::condition_variable wakeMonitor;
     std::atomic<bool> stopping{false};
-    std::string runtimeStatus="Waiting for BedrockTools";
+    std::string runtimeStatus="Waiting for Minecraft game hooks";
     std::string tickStatus="Waiting for world ticks";
     Clock::time_point lastTick{};
     bool attached=false;
@@ -54,7 +52,7 @@ class AdaptiveAim {
                     if(attached) {
                         if(!settings.enabled) message="OFF - enable Adaptive Aim";
                         else if(lastTick==Clock::time_point{} || Clock::now()-lastTick>std::chrono::seconds(3))
-                            message="Connected, but NO world ticks (check BedrockTools/game version)";
+                            message="Hooks installed, but NO world ticks (check game version)";
                         else message=tickStatus;
                     }
                 }
@@ -69,8 +67,6 @@ class AdaptiveAim {
         if(monitor.joinable()) monitor.join();
     }
     Clock::time_point last{};
-    bt::events::RuntimeListener<bt::events::LocalPlayerTickEvent> ticks;
-    bt::events::RuntimeListener<bt::events::ScreenStateEvent> screens;
     using List = std::vector<void*>(*)(void*);
     using Check = bool(*)(void*);
     using Solid = bool(*)(void*, const sdk::BlockPos&);
@@ -102,15 +98,14 @@ class AdaptiveAim {
         }
         return false;
     }
-    void tick(bt::events::LocalPlayerTickEvent& event) {
+    void tick(sdk::Player* player) {
         std::lock_guard lock(mutex);
         const auto now=Clock::now();
         float dt=last==Clock::time_point{}?0:std::chrono::duration<float>(now-last).count();
         last=now;
         lastTick=now;
         tickStatus="OFF / zero strength / no target types / UI open";
-        auto* player=event.player;
-        if(!settings.enabled || settings.strength<=0 || (!settings.players && !settings.mobs) || chat || container || !player || dt<=0 || dt>.2f) return;
+        if(!settings.enabled || settings.strength<=0 || (!settings.players && !settings.mobs) || uiBlocked || !player || dt<=0 || dt>.2f) return;
         auto* level=player->level(); auto* dimension=player->dimension();
         if(!level || !dimension || !level->actorManager() || !player->rotationComponent()) {
             tickStatus="Invalid world/player components - check game version"; return;
@@ -175,56 +170,41 @@ class AdaptiveAim {
     }
     bool attachRuntime() {
         std::lock_guard runtimeLock(runtimeMutex);
-        if(ticks && screens) return true;
-        auto* api=bt::api::find();
-        if(!api) {
-            std::lock_guard lock(mutex);
-            runtimeStatus="Missing BedrockTools API v1 - matching runtime required";
-            return false;
+        { std::lock_guard lock(mutex); if(attached) return true; }
+        // A mismatched game must not be rescanned continuously.
+        const auto now=Clock::now();
+        if(lastResolve!=Clock::time_point{} && now-lastResolve<std::chrono::seconds(2)) return false;
+        lastResolve=now;
+        std::string status;
+        if(!runtime.resolve(status)) {
+            std::lock_guard lock(mutex); runtimeStatus=status; return false;
         }
-        using Id=bt::memory::SignatureId;
-        list=sdk::function<List>(Id::ActorManagerList,api);
-        isPlayer=sdk::function<Check>(Id::ActorIsPlayer,api);
-        invisible=sdk::function<Check>(Id::ActorIsInvisible,api);
-        solid=sdk::function<Solid>(Id::BlockSourceIsSolidBlockingBlock,api);
-        turn=sdk::function<Turn>(Id::LocalPlayerApplyTurnDelta,api);
-        if(!list || !isPlayer || !invisible || !solid || !turn) {
-            std::lock_guard lock(mutex);
-            runtimeStatus="Missing game signatures:";
-            if(!list) runtimeStatus+=" ActorManagerList";
-            if(!isPlayer) runtimeStatus+=" ActorIsPlayer";
-            if(!invisible) runtimeStatus+=" ActorIsInvisible";
-            if(!solid) runtimeStatus+=" BlockSourceIsSolidBlockingBlock";
-            if(!turn) runtimeStatus+=" LocalPlayerApplyTurnDelta";
-            return false;
-        }
-        if(!screens.subscribe([this](auto& e) {
-            std::lock_guard lock(mutex);
-            (e.screen==bt::events::ScreenKind::Chat?chat:container)=e.phase==bt::events::ScreenPhase::Opened;
-        },bt::events::EventPriority::Normal,api)) {
-            std::lock_guard lock(mutex); runtimeStatus="Screen event subscription failed"; return false;
-        }
-        if(!ticks.subscribe([this](auto& e){tick(e);},bt::events::EventPriority::Normal,api)) {
-            screens.reset();
-            std::lock_guard lock(mutex); runtimeStatus="Tick event subscription failed"; return false;
-        }
-        { std::lock_guard lock(mutex); attached=true; runtimeStatus="Connected"; }
-        return true;
+        using Id=game::Signature;
+        list=runtime.function<List>(Id::ActorManagerList);
+        isPlayer=runtime.function<Check>(Id::ActorIsPlayer);
+        invisible=runtime.function<Check>(Id::ActorIsInvisible);
+        solid=runtime.function<Solid>(Id::BlockSourceIsSolidBlockingBlock);
+        turn=runtime.function<Turn>(Id::LocalPlayerApplyTurnDelta);
+        bool installed=runtime.install([this](auto* player){tick(player);},[this](bool blocked){
+            std::lock_guard lock(mutex); uiBlocked=blocked;
+        },status);
+        { std::lock_guard lock(mutex); attached=installed; runtimeStatus=status; }
+        return installed;
     }
 public:
-    ~AdaptiveAim() { stopMonitor(); }
+    ~AdaptiveAim() { stopMonitor(); runtime.stop(); }
     static AdaptiveAim& instance() { static AdaptiveAim mod; return mod; }
     bool load(pl::mod::ModContext&) { return true; }
     bool enable(pl::mod::ModContext& context) {
-        // Register controls BEFORE attempting to connect to BedrockTools.
-        // A missing/late dependency must not make the entire menu disappear.
+        // Register controls before scanning/hooking Minecraft.
+        // Unsupported game versions must not make the controls disappear.
         using namespace pl::modmenu;
         bool registered=ModuleBuilder(moduleId,"Adaptive Aim")
             .modId(context.id()).description("Smooth head/torso aim assistance. No auto-attack; no detection guarantees.")
             .defaultEnabled(false).hideInHudEditor()
             .onToggle([this](auto,bool enabled){
                 { std::lock_guard lock(mutex); settings.enabled=enabled; last={}; }
-                // Retry when toggled on, even if the dependency loaded after us.
+                // Retry when toggled on; late game startup is handled by the monitor.
                 if(enabled) attachRuntime();
             })
             .onConfigChanged([this](auto,auto key,auto value){config(key,value);})
@@ -239,7 +219,7 @@ public:
             .registerModule();
         if(!registered) return false;
         if(!attachRuntime()) {
-            context.logger().warn("Adaptive Aim controls are available, but the BedrockTools runtime/signatures are not ready. Enable matching BedrockTools, then switch Adaptive Aim off and on.");
+            context.logger().warn("Adaptive Aim controls are available; Minecraft signatures/hooks are not ready. No other mod is required. See the live status.");
         }
         startMonitor();
         return true;
@@ -247,10 +227,10 @@ public:
     bool disable(pl::mod::ModContext&) {
         stopMonitor();
         std::lock_guard runtimeLock(runtimeMutex);
-        ticks.reset(); screens.reset();
+        runtime.stop();
         pl::modmenu::unregisterModule(moduleId);
         std::lock_guard lock(mutex);
-        settings=aim::Settings{}; last={}; lastTick={}; attached=false; chat=container=false;
+        settings=aim::Settings{}; last={}; lastTick={}; attached=false; uiBlocked=false; lastResolve={};
         return true;
     }
     bool unload(pl::mod::ModContext& context) { return disable(context); }

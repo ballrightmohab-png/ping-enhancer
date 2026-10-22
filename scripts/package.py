@@ -14,8 +14,8 @@ def package(library, output):
     if len(header) < 20 or header[:5] != b'\x7fELF\x02' or header[5] != 1 or int.from_bytes(header[18:20], 'little') != 183:
         raise ValueError('Expected a little-endian ARM64 ELF shared library')
     manifest = dict(type='preload-native', name='Adaptive Aim', author='ping-enhancer contributors',
-                    description='Aim-assist-only BedrockTools companion. Requires the matching BedrockTools runtime.',
-                    version='0.3.0', entry='libAdaptiveAim.so')
+                    description='Standalone aim-assist mod. No other gameplay mod required.',
+                    version='0.4.0', entry='libAdaptiveAim.so')
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     with ZipFile(output, 'w', ZIP_DEFLATED) as archive:

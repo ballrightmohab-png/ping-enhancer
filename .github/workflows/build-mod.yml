@@ -31,24 +31,14 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE="$NDK_PATH/build/cmake/android.toolchain.cmake"
           -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28
           -DCMAKE_BUILD_TYPE=Release
-      - name: Test menu registration without runtime
+      - name: Test standalone hooks, controls and chicken targeting
         run: |
-          g++ -std=c++20 -Wall -Wextra -Werror -Itests/stubs \
-            -Ibuild/android/_deps/preloader-src/include \
-            -Ibuild/android/_deps/bedrocktools-src/include \
-            tests/menu_test.cpp -ldl -pthread -o build/menu_test
-          ./build/menu_test
-      - name: Test event-to-turn path and late runtime connection
-        run: |
-          g++ -std=c++20 -Wall -Wextra -Werror -fPIC -shared \
-            -Wl,-soname,libBedrockTools.so \
-            -Ibuild/android/_deps/bedrocktools-src/include \
-            tests/fake_runtime.cpp -pthread -o build/libBedrockTools.so
-          g++ -std=c++20 -Wall -Wextra -Werror -Itests/stubs \
-            -Ibuild/android/_deps/preloader-src/include \
-            -Ibuild/android/_deps/bedrocktools-src/include \
-            tests/runtime_test.cpp -ldl -pthread -o build/runtime_test
-          ./build/runtime_test "$PWD/build/libBedrockTools.so"
+          for test in menu hooks runtime; do
+            g++ -std=c++20 -Wall -Wextra -Werror -Itests/stubs \
+              -Ibuild/android/_deps/preloader-src/include \
+              tests/${test}_test.cpp -ldl -pthread -o build/${test}_test
+            ./build/${test}_test
+          done
       - name: Build native mod
         shell: bash
         run: |
@@ -65,6 +55,14 @@ jobs:
                   if 'error:' in line or 'undefined reference' in line:
                       print('::error::' + line.replace('%', '%25'))
           PYREPORT
+      - name: Verify no BedrockTools binary dependency
+        run: |
+          READELF="$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          "$READELF" --dynamic build/android/libAdaptiveAim.so > build/dynamic.txt
+          cat build/dynamic.txt
+          if grep -i 'NEEDED.*bedrocktools' build/dynamic.txt; then exit 1; fi
+          "$READELF" --dyn-syms build/android/libAdaptiveAim.so > build/symbols.txt
+          if grep 'UND.*BedrockTools' build/symbols.txt; then exit 1; fi
       - name: Package LeviPack
         run: python3 scripts/package.py build/android/libAdaptiveAim.so build/AdaptiveAim.levipack
       - uses: actions/upload-artifact@v4

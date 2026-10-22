@@ -10,11 +10,12 @@ bool registerModule(const ModuleInfo& info) { registeredMenu=info; return true; 
 void submitDrawCommands(std::string_view, std::span<const DrawCommand>) {}
 void unregisterModule(std::string_view) { registeredMenu.reset(); }
 }
+#include "FakeHost.hpp"
 #include "../src/Mod.cpp"
 int main() {
     pl::mod::ModContext context;
     auto& mod=AdaptiveAim::instance();
-    // No libBedrockTools.so loaded: dependency failure must NOT hide controls.
+    // No Minecraft loaded: missing signatures must NOT hide controls.
     assert(mod.enable(context));
     assert(registeredMenu);
     assert(!registeredMenu->defaultEnabled);
@@ -37,7 +38,7 @@ int main() {
     config(moduleId,"strength","75");
     config(moduleId,"players","false");
     config(moduleId,"mobs","true");
-    toggle(moduleId,true); // Retry missing runtime without removing the menu.
+    toggle(moduleId,true); // Retry missing game without removing the menu.
     assert(registeredMenu);
     toggle(moduleId,false);
     assert(mod.disable(context));

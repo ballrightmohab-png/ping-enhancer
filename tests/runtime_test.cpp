@@ -5,7 +5,7 @@
 #include <array>
 #include <thread>
 #include <cstring>
-#include <dlfcn.h>
+#include "FakeHost.hpp"
 namespace {
 std::optional<pl::modmenu::ModuleInfo> registeredMenu;
 std::string lastStatus;
@@ -36,8 +36,7 @@ struct ActorFixture {
     }
     void* ptr() { return storage.data(); }
 };
-int main(int argc,char** argv) {
-    assert(argc==2);
+int main() {
     pl::mod::ModContext context;
     auto& mod=AdaptiveAim::instance();
     assert(mod.enable(context));
@@ -47,20 +46,13 @@ int main(int argc,char** argv) {
     config(moduleId,"mobs","true");
     config(moduleId,"strength","100");
     config(moduleId,"fov","60");
-    toggle(moduleId,true); // Dependency deliberately not loaded yet.
+    toggle(moduleId,true); // Minecraft deliberately not available yet.
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    { std::lock_guard lock(statusMutex); assert(lastStatus.find("Missing BedrockTools")!=std::string::npos); }
-    void* handle=dlopen(argv[1],RTLD_NOW|RTLD_GLOBAL);
-    assert(handle);
-    auto setActors=reinterpret_cast<void(*)(void**,int)>(dlsym(handle,"Fake_SetActors"));
-    auto setBlocked=reinterpret_cast<void(*)(bool)>(dlsym(handle,"Fake_SetBlocked"));
-    auto emit=reinterpret_cast<void(*)(void*)>(dlsym(handle,"Fake_Tick"));
-    auto count=reinterpret_cast<int(*)()>(dlsym(handle,"Fake_TurnCount"));
-    auto listenerCount=reinterpret_cast<int(*)()>(dlsym(handle,"Fake_TickListenerCount"));
-    auto delta=reinterpret_cast<sdk::Vec2(*)()>(dlsym(handle,"Fake_LastDelta"));
-    assert(setActors && setBlocked && emit && count && delta && listenerCount);
-    for(int n=0;n<100 && !listenerCount();++n) std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    assert(listenerCount()==1); // Automatic recovery: no additional toggle.
+    { std::lock_guard lock(statusMutex); assert(lastStatus.find("Missing game signatures")!=std::string::npos); }
+    fakehost::gameReady=true;
+    for(int n=0;n<200 && fakehost::hookCount()!=5;++n)
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    assert(fakehost::hookCount()==5); // Automatic game hook installation.
     alignas(16) std::array<unsigned char,4096> dimension{}, level{};
     int region=0, manager=0;
     auto* regionPtr=&region; auto* managerPtr=&manager;
@@ -71,26 +63,26 @@ int main(int argc,char** argv) {
     ActorFixture chicken({{-.2f,0,2.8f},{.2f,.7f,3.2f}},dimension.data(),level.data(),true);
     ActorFixture otherPlayer({{9.7f,0,9.7f},{10.3f,1.8f,10.3f}},dimension.data(),level.data(),true);
     void* actors[]={chicken.ptr(),otherPlayer.ptr()};
-    setActors(actors,2);
-    auto tick=[&]{std::this_thread::sleep_for(std::chrono::milliseconds(10)); emit(local.ptr());};
+    fakehost::actors.assign(actors,actors+2);
+    auto tick=[&]{std::this_thread::sleep_for(std::chrono::milliseconds(10)); fakehost::tick(local.ptr());};
     tick(); tick();
-    assert(count()>0);
-    assert(delta().x>0); // Downward pitch toward chicken torso.
-    int before=count();
-    config(moduleId,"mobs","false"); tick(); assert(count()==before);
+    assert(fakehost::turns>0);
+    assert(fakehost::lastDelta.x>0); // Downward pitch toward chicken torso.
+    int before=fakehost::turns;
+    config(moduleId,"mobs","false"); tick(); assert(fakehost::turns==before);
     config(moduleId,"mobs","true");
-    config(moduleId,"strength","0"); tick(); assert(count()==before);
+    config(moduleId,"strength","0"); tick(); assert(fakehost::turns==before);
     config(moduleId,"strength","100");
-    setBlocked(true); tick(); assert(count()==before);
-    setBlocked(false);
-    config(moduleId,"fov","1"); tick(); assert(count()==before);
-    config(moduleId,"fov","60"); tick(); assert(count()>before);
-    before=count();
+    fakehost::blocked=true; tick(); assert(fakehost::turns==before);
+    fakehost::blocked=false;
+    config(moduleId,"fov","1"); tick(); assert(fakehost::turns==before);
+    config(moduleId,"fov","60"); tick(); assert(fakehost::turns>before);
+    before=fakehost::turns;
     // Treat the nearby fixture as a player: mobs ON must not override players OFF.
-    void* swapped[]={otherPlayer.ptr(),chicken.ptr()}; setActors(swapped,2);
-    tick(); assert(count()==before);
-    config(moduleId,"players","true"); tick(); assert(count()>before);
+    void* swapped[]={otherPlayer.ptr(),chicken.ptr()}; fakehost::actors.assign(swapped,swapped+2);
+    tick(); assert(fakehost::turns==before);
+    config(moduleId,"players","true"); tick(); assert(fakehost::turns>before);
     assert(mod.disable(context));
-    assert(listenerCount()==0);
-    dlclose(handle);
+    assert(fakehost::hookCount()==0);
+    assert(fakehost::originalTicks>0);
 }
