@@ -72,3 +72,15 @@ executable ELF load segments; exit 1 means a missing/ambiguous signature; exit 2
 means bad input. The tool extracts only the ARM64 library from an APK, reports its
 SHA-256, does not execute game code, and does not download anything. Even exit 0
 is **not** proof of correct function identity, layouts or successful gameplay.
+
+## Version 0.6.0 idle tracking status
+
+- Idle requests still originate from game ticks; no physical-look gate is added.
+- The camera command mapping defaults to yaw-first and is configurable. This is
+  a testable integration hypothesis, not a verified Android 1.26.51 ABI claim.
+- The host deferred-camera model now verifies two-axis convergence and follow-up
+  tracking of a moving chicken-sized entity with no look events.
+- A real controller bug was reproduced and fixed: voxel traversal could overshoot
+  a negative-direction grid-aligned endpoint and falsely report an obstruction.
+- Immediate actor rotation checks were replaced by later-tick observation. Actual
+  rendered camera movement on the user's installation remains unverified.

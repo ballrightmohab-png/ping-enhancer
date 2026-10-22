@@ -1,4 +1,4 @@
-# Adaptive Aim 0.5.0 — standalone LeviLauncher mod
+# Adaptive Aim 0.6.0 — standalone LeviLauncher mod
 
 **BedrockTools is no longer required, installed, loaded, fetched or queried.**
 This is a native Android ARM64 mod for LeviLaunchroid. It uses the launcher's
@@ -21,7 +21,7 @@ No undetectability or ban-safety claim. Use only where assistance is permitted.
 
 ## Controls
 
-Open the launcher mod menu → **Adaptive Aim**:
+Open the launcher mod menu → **Auto Target Tracking**:
 
 - Master switch: disabled by default.
 - **Target players**: on by default.
@@ -29,8 +29,11 @@ Open the launcher mod menu → **Adaptive Aim**:
 - **Aim strength (%)**: 0–100, default 50. Zero means no assist.
 - **Aim at head**: off = torso, on = head (bounding-box fractions, not skeletons).
 - **Adaptive slowdown**: slows near the aim point.
-- **Aim cone**: 1–60°, default 20, measured in both pitch and yaw.
+- **Aim cone**: 1–180°, default 60, measured in both pitch and yaw.
 - **Range**: 1–6 blocks, default 4.
+- **Camera input: yaw first (advanced)**: on by default; off selects the prior
+  pitch-first mapping. Android axis order is not yet device-verified. If it
+  moves on the wrong axis, turn the master off before changing this option.
 - **Maximum turn**: 5–90°/second, default 70; strength scales the resulting turn.
 
 No auto-clicking, reach, packets, ESP or extra gameplay modules. The Mob category
@@ -55,8 +58,10 @@ The monitor retries incomplete scans/installation every two seconds while the
 module is enabled at the native lifecycle level. The live HUD distinguishes
 missing signatures, absent world ticks, disabled filters, range/cone rejection,
 solid obstructions and a commanded turn with no immediate camera change.
-Camera changes may be deferred by the game or other mods, so that last message
-is a diagnostic, not proof of a broken ABI.
+Camera changes may be deferred by the game or other mods. Response checks now
+observe player rotation on subsequent ticks, not immediately after the turn call.
+Neither a submitted command nor an actor rotation change proves rendered-camera
+movement.
 
 ## Quick chicken check
 
@@ -135,3 +140,29 @@ These are **not proof of real-game compatibility or camera movement**.
 See `COMPATIBILITY.md` for findings and the remaining device checks.
 `scripts/audit_game.py` audits the six byte signatures in a user-supplied ARM64
 Minecraft `.so` or APK. It does not yet audit the RTTI lookup or function identity.
+
+## 0.6.0 — automatic idle tracking (experimental)
+
+Tracking is driven by game ticks and **never requires a mouse/touch/look event**.
+It computes fresh target points every tick and keeps a 2° preference for a
+still-valid tracked entity. The retained target identity is only compared against
+the fresh actor list, never dereferenced across ticks. Menus, master off, strength
+zero and both target switches off stop issuing requests. There is no auto-attack.
+
+This version separates camera-input mapping from actor pitch/yaw storage. The
+new default sends yaw first and pitch second; an advanced toggle permits the
+previous ordering. Research supports treating those as different boundaries,
+but the exact Android mapping still needs device verification. The standalone
+native tick-call camera path remains **experimental**, not a proven idle camera
+integration for every 1.26.51 binary. It is not secretly switched to swipe-only.
+
+A regression test found and fixed the solid-voxel ray traversal overshooting a
+negative-axis endpoint on a block boundary (for example a mob centered at x=-1).
+That bug could incorrectly reject a target in unobstructed air.
+
+The expanded host test models camera commands applied on the *next* tick and
+checks that both yaw and pitch converge toward a chicken-sized entity, continue
+following it when it moves across the view, and stop at master-off, all with
+zero look-input events. This validates the controller **under that declared
+model**, not the real Minecraft camera ABI. No direct rotation-field write was
+added to production; only the test model updates its synthetic rotation.

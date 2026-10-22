@@ -32,6 +32,15 @@ class AdaptiveAim {
     std::string tickStatus="Waiting for world ticks";
     Clock::time_point lastTick{};
     bool attached=false;
+    // Identity tokens are compared only against the freshly enumerated actor list.
+    // No cached target pointer is dereferenced on a later tick.
+    std::uintptr_t targetToken=0, worldToken=0;
+    bool awaitingRotation=false;
+    aim::Angles rotationBaseline{};
+    Clock::time_point firstRequest{};
+    void resetTracking() {
+        targetToken=0; awaitingRotation=false; firstRequest={};
+    }
 
     void report(const std::string& text) {
         pl::modmenu::DrawCommand command{};
@@ -79,24 +88,9 @@ class AdaptiveAim {
     // Conservative voxel traversal: any solid voxel intersected by the segment blocks it.
     // Not a shape-aware Minecraft raycast (glass/partial blocks can differ).
     bool visible(sdk::BlockSource* source, aim::Vec3 a, aim::Vec3 b) {
-        if (!source || !aim::finite(a) || !aim::finite(b)) return false;
-        int cell[3]={(int)std::floor(a.x),(int)std::floor(a.y),(int)std::floor(a.z)};
-        int end[3]={(int)std::floor(b.x),(int)std::floor(b.y),(int)std::floor(b.z)};
-        float origin[3]={a.x,a.y,a.z}, d[3]={b.x-a.x,b.y-a.y,b.z-a.z};
-        int sign[3]; float next[3], stride[3];
-        for(int i=0;i<3;++i) {
-            sign[i]=d[i]>0?1:-1;
-            stride[i]=d[i]==0?INFINITY:std::abs(1/d[i]);
-            next[i]=d[i]==0?INFINITY:((cell[i]+(sign[i]>0?1:0))-origin[i])/d[i];
-        }
-        for(int n=0;n<128;++n) {
-            if(solid(source,{cell[0],cell[1],cell[2]})) return false;
-            if(cell[0]==end[0] && cell[1]==end[1] && cell[2]==end[2]) return true;
-            int axis=next[0]<next[1]?0:1;
-            if(next[2]<next[axis]) axis=2;
-            cell[axis]+=sign[axis]; next[axis]+=stride[axis];
-        }
-        return false;
+        return source && aim::clearVoxels(a,b,[&](int x,int y,int z) {
+            return solid(source,{x,y,z});
+        });
     }
     void tick(sdk::Player* player) {
         std::lock_guard lock(mutex);
@@ -104,18 +98,30 @@ class AdaptiveAim {
         float dt=last==Clock::time_point{}?0:std::chrono::duration<float>(now-last).count();
         last=now;
         lastTick=now;
-        tickStatus="OFF / zero strength / no target types / UI open";
-        if(!settings.enabled || settings.strength<=0 || (!settings.players && !settings.mobs) || uiBlocked || !player || dt<=0 || dt>.2f) return;
+        // This path runs on game ticks, never gated on touch/mouse activity.
+        if(!settings.enabled) { tickStatus="OFF - enable Auto Target Tracking"; resetTracking(); return; }
+        if(settings.strength<=0) { tickStatus="Paused: strength is zero"; resetTracking(); return; }
+        if(!settings.players && !settings.mobs) { tickStatus="Paused: both target switches are off"; resetTracking(); return; }
+        if(uiBlocked) { tickStatus="Paused: menu open or menu state not observed"; resetTracking(); return; }
+        if(!player || dt<=0 || dt>.2f) { tickStatus="Waiting for regular player ticks"; resetTracking(); return; }
         auto* level=player->level(); auto* dimension=player->dimension();
         if(!level || !dimension || !level->actorManager() || !player->rotationComponent()) {
-            tickStatus="Invalid world/player components - check game version"; return;
+            tickStatus="Invalid world/player components - check game version"; resetTracking(); return;
+        }
+        if(worldToken!=reinterpret_cast<std::uintptr_t>(level)) {
+            resetTracking(); worldToken=reinterpret_cast<std::uintptr_t>(level);
         }
         const auto box=player->bounds();
         aim::Vec3 eye{(box.min.x+box.max.x)*.5f,box.max.y-.12f,(box.min.z+box.max.z)*.5f};
-        if(!aim::finite(eye)) return;
+        if(!aim::finite(eye)) { tickStatus="Invalid player bounds"; resetTracking(); return; }
         auto rot=player->rotation();
-        if(!std::isfinite(rot.x) || !std::isfinite(rot.y)) return;
-        aim::Angles best{}; float score=settings.fov;
+        if(!std::isfinite(rot.x) || !std::isfinite(rot.y)) {
+            tickStatus="Invalid player rotation"; resetTracking(); return;
+        }
+        bool rotationChanged=awaitingRotation && aim::magnitude(aim::error(rotationBaseline,{rot.x,rot.y}))>.01f;
+        if(rotationChanged) { rotationBaseline={rot.x,rot.y}; firstRequest=now; }
+        aim::Angles best{}; float score=INFINITY;
+        std::uintptr_t bestToken=0;
         bool found=false;
         int candidates=0, inRange=0, inCone=0, blocked=0;
         // No raw actor pointers retained across ticks/world changes.
@@ -140,9 +146,12 @@ class AdaptiveAim {
             float angle=aim::magnitude(error);
             if(angle>=settings.fov) continue;
             ++inCone;
-            if(angle>=score) continue;
+            const auto token=reinterpret_cast<std::uintptr_t>(raw);
+            // Prefer a still-valid tracked entity over similarly aligned neighbours.
+            const float selectionScore=angle+(targetToken && token!=targetToken?2.f:0.f);
+            if(selectionScore>=score) continue;
             if(!visible(dimension->blockSource(),eye,point)) { ++blocked; continue; }
-            score=angle; best=error; found=true;
+            score=selectionScore; best=error; bestToken=token; found=true;
         }
         if(!found) {
             if(!candidates) tickStatus="No enabled targets (turn Target mobs ON for chickens)";
@@ -150,23 +159,35 @@ class AdaptiveAim {
             else if(!inCone) tickStatus="Outside aim cone - aim closer or increase cone";
             else if(blocked) tickStatus="Target blocked by solid voxels";
             else tickStatus="No valid target";
+            resetTracking();
             return;
         }
-        tickStatus="Tracking target";
+        if(bestToken!=targetToken) { awaitingRotation=false; firstRequest={}; }
+        targetToken=bestToken;
         auto delta=aim::step(best,dt,10.f,settings.speed,settings.adaptive);
         const float strength=settings.strength/100.f;
         delta.pitch*=strength;
         delta.yaw*=strength;
         delta.pitch=std::clamp(rot.x+delta.pitch,-89.9f,89.9f)-rot.x;
-        sdk::Vec2 input{delta.pitch,delta.yaw};
-        turn(player,&input);
-        const auto after=player->rotation();
-        if(std::abs(after.x-rot.x)+std::abs(aim::wrap(after.y-rot.y))<.00001f)
-            tickStatus="Turn sent; no immediate rotation change (check camera mods / game version)";
+        if(aim::magnitude(best)<.05f) {
+            tickStatus="Auto tracking: aligned (no input needed)";
+            awaitingRotation=false;
+            return;
+        }
+        if(!awaitingRotation) {
+            rotationBaseline={rot.x,rot.y}; firstRequest=now; awaitingRotation=true;
+        }
+        const auto mapped=aim::toLookDelta(delta,settings.yawFirst);
+        sdk::Vec2 input{mapped.first,mapped.second};
+        turn(player,&input); // Automatic request: no mouse/touch event required.
+        if(rotationChanged) tickStatus="Auto tracking: player rotation updated";
+        else if(now-firstRequest>std::chrono::milliseconds(500))
+            tickStatus="Auto requests sent; camera response unconfirmed (check input axes)";
+        else tickStatus="Auto tracking: waiting for later camera update";
     }
     void config(std::string_view key,std::string_view value) {
         std::lock_guard lock(mutex);
-        settings.update(key,value);
+        if(settings.update(key,value)) resetTracking();
     }
     bool attachRuntime() {
         std::lock_guard runtimeLock(runtimeMutex);
@@ -199,11 +220,11 @@ public:
         // Register controls before scanning/hooking Minecraft.
         // Unsupported game versions must not make the controls disappear.
         using namespace pl::modmenu;
-        bool registered=ModuleBuilder(moduleId,"Adaptive Aim")
-            .modId(context.id()).description("Smooth head/torso aim assistance. No auto-attack; no detection guarantees.")
+        bool registered=ModuleBuilder(moduleId,"Auto Target Tracking")
+            .modId(context.id()).description("Automatic head/torso tracking, even without mouse or touch movement. No auto-attack.")
             .defaultEnabled(false).hideInHudEditor()
             .onToggle([this](auto,bool enabled){
-                { std::lock_guard lock(mutex); settings.enabled=enabled; last={}; }
+                { std::lock_guard lock(mutex); settings.enabled=enabled; last={}; resetTracking(); }
                 // Retry when toggled on; late game startup is handled by the monitor.
                 if(enabled) attachRuntime();
             })
@@ -213,8 +234,9 @@ public:
             .config("strength","Aim strength (%)",ConfigType::SliderFloat,"50","0","100")
             .config("head","Aim at head (off = torso)",ConfigType::Toggle,"false")
             .config("adaptive","Adaptive slowdown",ConfigType::Toggle,"true")
-            .config("fov","Aim cone (degrees)",ConfigType::SliderFloat,"20","1","60")
+            .config("fov","Aim cone (degrees)",ConfigType::SliderFloat,"60","1","180")
             .config("range","Range (blocks)",ConfigType::SliderFloat,"4","1","6")
+            .config("yawFirst","Camera input: yaw first (advanced)",ConfigType::Toggle,"true")
             .config("speed","Maximum turn (degrees/sec)",ConfigType::SliderFloat,"70","5","90")
             .registerModule();
         if(!registered) return false;
@@ -230,7 +252,7 @@ public:
         runtime.stop();
         pl::modmenu::unregisterModule(moduleId);
         std::lock_guard lock(mutex);
-        settings=aim::Settings{}; last={}; lastTick={}; attached=false; uiBlocked=false; lastResolve={};
+        settings=aim::Settings{}; last={}; lastTick={}; attached=false; uiBlocked=false; lastResolve={}; worldToken=0; resetTracking();
         return true;
     }
     bool unload(pl::mod::ModContext& context) { return disable(context); }

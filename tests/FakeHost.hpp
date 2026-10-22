@@ -6,6 +6,8 @@
 #include <atomic>
 #include <map>
 #include <mutex>
+#include <cstring>
+#include <cmath>
 
 namespace fakehost {
 inline std::atomic<bool> gameReady{false};
@@ -14,17 +16,35 @@ inline int failHook=-1, hookCalls=0, turns=0, originalTicks=0;
 inline bool blocked=false, showingMenu=false;
 inline std::atomic<bool> menuAvailable{true};
 inline bool menuQuery(void*) { return showingMenu; }
-inline game::Vec2 lastDelta{};
+inline game::Vec2 lastDelta{}, pendingCamera{};
+inline bool integrateCamera=false;
 inline std::vector<void*> actors;
 struct Hook { void* detour; };
 inline std::mutex mutex;
 inline std::map<void*,Hook> hooks;
-inline void normalTick(void*) { ++originalTicks; }
+inline void normalTick(void* local) {
+    ++originalTicks;
+    if(integrateCamera && local) {
+        auto* component=static_cast<game::Actor*>(local)->rotationComponent();
+        if(component) {
+            game::Vec2 rotation;
+            std::memcpy(&rotation,component,sizeof(rotation));
+            // Explicit MODEL convention: first input is yaw, second is pitch.
+            rotation.x=std::clamp(rotation.x+pendingCamera.y,-89.9f,89.9f);
+            rotation.y=std::remainder(rotation.y+pendingCamera.x,360.f);
+            std::memcpy(component,&rotation,sizeof(rotation));
+        }
+        pendingCamera={};
+    }
+}
 inline std::vector<void*> list(void*) { return actors; }
 inline bool player(void* a) { return !actors.empty() && a==actors.back(); }
 inline bool invisible(void*) { return false; }
 inline bool solid(void*,const game::BlockPos&) { return blocked; }
-inline void turn(void*,game::Vec2* delta) { ++turns; lastDelta=*delta; }
+inline void turn(void*,game::Vec2* delta) {
+    ++turns; lastDelta=*delta;
+    if(integrateCamera) { pendingCamera.x+=delta->x; pendingCamera.y+=delta->y; }
+}
 inline void* address(game::Signature id) {
     using S=game::Signature;
     switch(id) {

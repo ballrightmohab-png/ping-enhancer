@@ -4,7 +4,21 @@
 #include <limits>
 int main() {
     using namespace aim;
+    auto air=[](int,int,int){return false;};
+    assert(clearVoxels({0,1.68f,0},{-1,.385f,3},air));
+    assert(clearVoxels({0,1.68f,0},{1,.385f,3},air));
+    assert(clearVoxels({0,1.68f,0},{-1,.385f,-3},air));
+    assert(!clearVoxels({0,1.68f,0},{-1,.385f,3},[](int x,int,int z){return x==-1 && z==3;}));
+    assert(!clearVoxels({0,1.68f,0},{1,.385f,3},[](int,int,int z){return z==1;}));
+    assert(!clearVoxels({NAN,0,0},{1,0,0},air));
+    assert(!clearVoxels({1e30f,0,0},{1,0,0},air));
+    auto yawFirst=toLookDelta({5,-12},true);
+    assert(yawFirst.first==-12 && yawFirst.second==5);
+    auto pitchFirst=toLookDelta({5,-12},false);
+    assert(pitchFirst.first==5 && pitchFirst.second==-12);
     Settings settings;
+    assert(settings.yawFirst);
+    assert(settings.update("yawFirst","false") && !settings.yawFirst);
     assert(settings.accepts(true,true));
     assert(!settings.accepts(false,true));
     assert(settings.update("players","false"));

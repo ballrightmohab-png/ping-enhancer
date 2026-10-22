@@ -70,7 +70,7 @@ int main() {
     assert(!fakehost::queryMenu(false));
     tick(); tick();
     assert(fakehost::turns>0);
-    assert(fakehost::lastDelta.x>0); // Downward pitch toward chicken torso.
+    assert(fakehost::lastDelta.y>0); // Yaw-first input: pitch is the second component.
     int before=fakehost::turns;
     assert(fakehost::queryMenu(true));
     tick(); assert(fakehost::turns==before);
@@ -90,6 +90,35 @@ int main() {
     void* swapped[]={otherPlayer.ptr(),chicken.ptr()}; fakehost::actors.assign(swapped,swapped+2);
     tick(); assert(fakehost::turns==before);
     config(moduleId,"players","true"); tick(); assert(fakehost::turns>before);
+
+    // Automatic convergence with a DEFERRED CAMERA MODEL and zero look events.
+    // This checks our closed loop under that declared model, NOT Android camera ABI.
+    config(moduleId,"players","false");
+    fakehost::actors.assign(actors,actors+2);
+    config(moduleId,"fov","180");
+    config(moduleId,"speed","90");
+    config(moduleId,"strength","100");
+    config(moduleId,"adaptive","false");
+    chicken.bounds={{.8f,0,2.8f},{1.2f,.7f,3.2f}};
+    local.rotation={};
+    fakehost::pendingCamera={}; fakehost::integrateCamera=true;
+    auto desired=aim::towards({0,1.68f,0},{1,.385f,3});
+    assert(desired);
+    float initialError=aim::magnitude(aim::error({0,0},*desired));
+    for(int i=0;i<70;++i) tick(); // No mouse/touch callbacks anywhere in this test.
+    float finalError=aim::magnitude(aim::error({local.rotation.x,local.rotation.y},*desired));
+    assert(finalError<initialError*.3f);
+    assert(local.rotation.x>0 && local.rotation.y<0); // Both axes converge.
+    // A moving target is re-acquired/re-aimed without any look input.
+    chicken.bounds.min.x-=2; chicken.bounds.max.x-=2;
+    for(int i=0;i<70;++i) tick();
+    assert(local.rotation.y>0);
+    // The master switch prevents new requests even while idle tracking is active.
+    toggle(moduleId,false);
+    before=fakehost::turns;
+    for(int i=0;i<5;++i) tick();
+    assert(fakehost::turns==before);
+    fakehost::integrateCamera=false;
     assert(mod.disable(context));
     assert(fakehost::hookCount()==0);
     assert(fakehost::originalTicks>0);

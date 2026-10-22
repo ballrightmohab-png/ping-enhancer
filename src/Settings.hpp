@@ -9,8 +9,8 @@
 namespace aim {
 struct Settings {
     bool enabled=false, adaptive=true, head=false;
-    bool players=true, mobs=false;
-    float fov=20, range=4, strength=50, speed=70;
+    bool players=true, mobs=false, yawFirst=true;
+    float fov=60, range=4, strength=50, speed=70;
 
     bool accepts(bool player, bool mob) const {
         // Players can also have the Mob category; never let the mobs switch
@@ -23,6 +23,7 @@ struct Settings {
         if(key=="head") flag=&head;
         if(key=="players") flag=&players;
         if(key=="mobs") flag=&mobs;
+        if(key=="yawFirst") flag=&yawFirst;
         if(flag) {
             if(value!="true" && value!="false") return false;
             *flag=value=="true";
@@ -34,7 +35,7 @@ struct Settings {
         errno=0;
         const float number=std::strtof(text.c_str(), &end);
         if(errno==ERANGE || end==text.c_str() || end!=text.c_str()+text.size() || !std::isfinite(number)) return false;
-        if(key=="fov") fov=std::clamp(number,1.f,60.f);
+        if(key=="fov") fov=std::clamp(number,1.f,180.f);
         else if(key=="range") range=std::clamp(number,1.f,6.f);
         else if(key=="strength") strength=std::clamp(number,0.f,100.f);
         else if(key=="speed") speed=std::clamp(number,5.f,90.f);
