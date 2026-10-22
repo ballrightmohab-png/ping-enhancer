@@ -15,7 +15,7 @@ def package(library, output):
         raise ValueError('Expected a little-endian ARM64 ELF shared library')
     manifest = dict(type='preload-native', name='Adaptive Aim', author='ping-enhancer contributors',
                     description='Aim-assist-only BedrockTools companion. Requires the matching BedrockTools runtime.',
-                    version='0.1.0', entry='libAdaptiveAim.so')
+                    version='0.2.0', entry='libAdaptiveAim.so')
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     with ZipFile(output, 'w', ZIP_DEFLATED) as archive:

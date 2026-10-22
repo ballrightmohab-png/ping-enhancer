@@ -1,4 +1,5 @@
 #include "Aim.hpp"
+#include "Settings.hpp"
 #include <bedrocktools/Api.hpp>
 #include <bedrocktools/events/RuntimeListener.hpp>
 #include <bedrocktools/sdk/Functions.hpp>
@@ -17,13 +18,10 @@ namespace bt = bedrocktools;
 namespace sdk = bt::sdk;
 using Clock = std::chrono::steady_clock;
 constexpr auto moduleId = "adaptiveaim.assist";
-struct Settings {
-    bool enabled=false, adaptive=true, head=false;
-    float fov=8, range=4, response=5, speed=35;
-};
 class AdaptiveAim {
     std::mutex mutex;
-    Settings settings;
+    aim::Settings settings;
+    std::mutex runtimeMutex;
     bool chat=false, container=false;
     Clock::time_point last{};
     bt::events::RuntimeListener<bt::events::LocalPlayerTickEvent> ticks;
@@ -65,19 +63,22 @@ class AdaptiveAim {
         float dt=last==Clock::time_point{}?0:std::chrono::duration<float>(now-last).count();
         last=now;
         auto* player=event.player;
-        if(!settings.enabled || chat || container || !player || dt<=0 || dt>.2f) return;
+        if(!settings.enabled || settings.strength<=0 || (!settings.players && !settings.mobs) || chat || container || !player || dt<=0 || dt>.2f) return;
         auto* level=player->level(); auto* dimension=player->dimension();
         if(!level || !dimension || !level->actorManager() || !player->rotationComponent()) return;
         const auto box=player->bounds();
         aim::Vec3 eye{(box.min.x+box.max.x)*.5f,box.max.y-.12f,(box.min.z+box.max.z)*.5f};
         if(!aim::finite(eye)) return;
         auto rot=player->rotation();
+        if(!std::isfinite(rot.x) || !std::isfinite(rot.y)) return;
         aim::Angles best{}; float score=settings.fov;
         bool found=false;
         // No raw actor pointers retained across ticks/world changes.
         for(void* raw:list(level->actorManager())) {
-            if(!raw || raw==player || !isPlayer(raw) || invisible(raw)) continue;
+            if(!raw || raw==player || invisible(raw)) continue;
             auto* actor=static_cast<sdk::Actor*>(raw);
+            // Same Mob category bit (2) used by BedrockTools Hitbox.
+            if(!settings.accepts(isPlayer(raw), actor->hasCategory(2))) continue;
             if(actor->dimension()!=dimension) continue;
             auto bounds=actor->bounds();
             float height=bounds.max.y-bounds.min.y;
@@ -94,35 +95,23 @@ class AdaptiveAim {
             score=angle; best=error; found=true;
         }
         if(!found) return;
-        auto delta=aim::step(best,dt,settings.response,settings.speed,settings.adaptive);
+        auto delta=aim::step(best,dt,10.f,settings.speed,settings.adaptive);
+        const float strength=settings.strength/100.f;
+        delta.pitch*=strength;
+        delta.yaw*=strength;
         delta.pitch=std::clamp(rot.x+delta.pitch,-89.9f,89.9f)-rot.x;
         sdk::Vec2 input{delta.pitch,delta.yaw};
         turn(player,&input);
     }
     void config(std::string_view key,std::string_view value) {
         std::lock_guard lock(mutex);
-        if(key=="adaptive" || key=="head") {
-            if(value!="true" && value!="false") return;
-            (key=="adaptive"?settings.adaptive:settings.head)=value=="true";
-            return;
-        }
-        if(value.empty() || value.size()>64) return;
-        const std::string text(value);
-        char* end=nullptr;
-        errno=0;
-        const float number=std::strtof(text.c_str(), &end);
-        if(errno==ERANGE || end==text.c_str() || end!=text.c_str()+text.size() || !std::isfinite(number)) return;
-        if(key=="fov") settings.fov=std::clamp(number,1.f,20.f);
-        if(key=="range") settings.range=std::clamp(number,1.f,6.f);
-        if(key=="response") settings.response=std::clamp(number,1.f,12.f);
-        if(key=="speed") settings.speed=std::clamp(number,5.f,90.f);
+        settings.update(key,value);
     }
-public:
-    static AdaptiveAim& instance() { static AdaptiveAim mod; return mod; }
-    bool load(pl::mod::ModContext&) { return true; }
-    bool enable(pl::mod::ModContext& context) {
+    bool attachRuntime() {
+        std::lock_guard runtimeLock(runtimeMutex);
+        if(ticks && screens) return true;
         auto* api=bt::api::find();
-        if(!api) { context.logger().error("Enable the matching BedrockTools runtime first, then re-enable Adaptive Aim."); return false; }
+        if(!api) return false;
         using Id=bt::memory::SignatureId;
         list=sdk::function<List>(Id::ActorManagerList,api);
         isPlayer=sdk::function<Check>(Id::ActorIsPlayer,api);
@@ -135,27 +124,45 @@ public:
             (e.screen==bt::events::ScreenKind::Chat?chat:container)=e.phase==bt::events::ScreenPhase::Opened;
         },bt::events::EventPriority::Normal,api)) return false;
         if(!ticks.subscribe([this](auto& e){tick(e);},bt::events::EventPriority::Normal,api)) { screens.reset(); return false; }
+        return true;
+    }
+public:
+    static AdaptiveAim& instance() { static AdaptiveAim mod; return mod; }
+    bool load(pl::mod::ModContext&) { return true; }
+    bool enable(pl::mod::ModContext& context) {
+        // Register controls BEFORE attempting to connect to BedrockTools.
+        // A missing/late dependency must not make the entire menu disappear.
         using namespace pl::modmenu;
         bool registered=ModuleBuilder(moduleId,"Adaptive Aim")
             .modId(context.id()).description("Smooth head/torso aim assistance. No auto-attack; no detection guarantees.")
             .defaultEnabled(false).hideInHudEditor()
-            .onToggle([this](auto,bool enabled){std::lock_guard lock(mutex); settings.enabled=enabled; last={};})
+            .onToggle([this](auto,bool enabled){
+                { std::lock_guard lock(mutex); settings.enabled=enabled; last={}; }
+                // Retry when toggled on, even if the dependency loaded after us.
+                if(enabled) attachRuntime();
+            })
             .onConfigChanged([this](auto,auto key,auto value){config(key,value);})
+            .config("players","Target players",ConfigType::Toggle,"true")
+            .config("mobs","Target mobs",ConfigType::Toggle,"false")
+            .config("strength","Aim strength (%)",ConfigType::SliderFloat,"50","0","100")
             .config("head","Aim at head (off = torso)",ConfigType::Toggle,"false")
             .config("adaptive","Adaptive slowdown",ConfigType::Toggle,"true")
             .config("fov","Aim cone (degrees)",ConfigType::SliderFloat,"8","1","20")
             .config("range","Range (blocks)",ConfigType::SliderFloat,"4","1","6")
-            .config("response","Response",ConfigType::SliderFloat,"5","1","12")
-            .config("speed","Maximum turn (degrees/sec)",ConfigType::SliderFloat,"35","5","90")
+            .config("speed","Maximum turn (degrees/sec)",ConfigType::SliderFloat,"70","5","90")
             .registerModule();
-        if(!registered) { ticks.reset(); screens.reset(); }
-        return registered;
+        if(!registered) return false;
+        if(!attachRuntime()) {
+            context.logger().warn("Adaptive Aim controls are available, but the BedrockTools runtime/signatures are not ready. Enable matching BedrockTools, then switch Adaptive Aim off and on.");
+        }
+        return true;
     }
     bool disable(pl::mod::ModContext&) {
+        std::lock_guard runtimeLock(runtimeMutex);
         ticks.reset(); screens.reset();
         pl::modmenu::unregisterModule(moduleId);
         std::lock_guard lock(mutex);
-        settings=Settings{}; last={}; chat=container=false;
+        settings=aim::Settings{}; last={}; chat=container=false;
         return true;
     }
     bool unload(pl::mod::ModContext& context) { return disable(context); }
