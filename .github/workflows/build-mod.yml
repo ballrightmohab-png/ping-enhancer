@@ -38,6 +38,17 @@ jobs:
             -Ibuild/android/_deps/bedrocktools-src/include \
             tests/menu_test.cpp -ldl -pthread -o build/menu_test
           ./build/menu_test
+      - name: Test event-to-turn path and late runtime connection
+        run: |
+          g++ -std=c++20 -Wall -Wextra -Werror -fPIC -shared \
+            -Wl,-soname,libBedrockTools.so \
+            -Ibuild/android/_deps/bedrocktools-src/include \
+            tests/fake_runtime.cpp -pthread -o build/libBedrockTools.so
+          g++ -std=c++20 -Wall -Wextra -Werror -Itests/stubs \
+            -Ibuild/android/_deps/preloader-src/include \
+            -Ibuild/android/_deps/bedrocktools-src/include \
+            tests/runtime_test.cpp -ldl -pthread -o build/runtime_test
+          ./build/runtime_test "$PWD/build/libBedrockTools.so"
       - name: Build native mod
         shell: bash
         run: |

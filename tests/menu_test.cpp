@@ -7,6 +7,7 @@ std::optional<pl::modmenu::ModuleInfo> registeredMenu;
 }
 namespace pl::modmenu {
 bool registerModule(const ModuleInfo& info) { registeredMenu=info; return true; }
+void submitDrawCommands(std::string_view, std::span<const DrawCommand>) {}
 void unregisterModule(std::string_view) { registeredMenu.reset(); }
 }
 #include "../src/Mod.cpp"
