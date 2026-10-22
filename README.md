@@ -1,4 +1,4 @@
-# Adaptive Aim 0.7.0 — standalone LeviLauncher mod
+# Adaptive Aim 0.8.0 — standalone LeviLauncher mod
 
 **BedrockTools is no longer required, installed, loaded, fetched or queried.**
 This is a native Android ARM64 mod for LeviLaunchroid. It uses the launcher's
@@ -31,7 +31,10 @@ Open the launcher mod menu → **Auto Target Tracking**:
 - **Adaptive slowdown**: slows near the aim point.
 - **Aim cone**: 1–180°, default 60, measured in both pitch and yaw.
 - **Range**: 1–6 blocks, default 4.
-- **Camera input: yaw first (advanced)**: off by default, matching frame-gen
+- **Auto-calibrate camera axes**: on by default. Two small isolated probes learn
+  axis order, sign and gain from changes in the game view ray. Keep the camera
+  still briefly during calibration. Missing/unstable response pauses calibration.
+- **Camera input: yaw first (advanced)**: only used with auto-calibration OFF; off by default, matching frame-gen
   source's pitch-first convention; on selects yaw-first. Android axis order is not yet device-verified. If it
   moves on the wrong axis, turn the master off before changing this option.
 - **Frame-gen camera smoothing**: on by default; filters automatic corrections
@@ -204,3 +207,39 @@ Host tests cover smoothing/residual conservation, bounded release, reset/stall
 cancellation, unchanged physical input, one original callback per automatic
 request, stopped-runtime rejection and deferred idle target following. **These
 still do not validate actual rendered camera movement on your device.**
+
+## 0.8.0 — crosshair feedback and camera-response calibration
+
+The user confirmed 0.7.0 moved the camera but did not aim at the entity. This
+revision replaces the assumption that body rotation equals the camera view:
+
+- Reads the embedded game `HitResult` ray's origin/direction (`Level + 456`,
+  start @0, direction @12). These are version-specific layout assumptions;
+  direction validity and proximity to the player are checked. It does not need
+  an existing entity hit to form a direction. Invalid rays pause tracking rather
+  than falling back to potentially stale body orientation.
+- Measures the target point from that ray origin, and angular error from its
+  direction. Torso/head target points remain inside the entity bounding box.
+- Default auto-calibration submits two tiny isolated native-input probes and
+  estimates a 2x2 input-to-view response matrix. This handles swapped axes,
+  inverted signs and gain differences rather than guessing from source names.
+  Physical look invalidates a pending calibration sample; unknown/degenerate
+  or absent responses stop probing rather than issuing uncontrolled turns.
+- A stagnant view during normal tracking latches a pause; toggle the master off/on
+  to retry. Touch/mouse input itself is forwarded unchanged; calibration does not
+  require it, and automatic tracking still runs while the user is idle.
+
+**Touch test:** use **first-person, centre-crosshair aiming controls**, not the
+classic tap-to-interact cursor. The stored pick ray must correspond to the
+centre crosshair. This mod does not force a control scheme or prove that every
+Android touch mode supplies that same ray; arbitrary tap-cursor targeting and
+third-person parallax are not claimed as supported. If the ray does not update,
+tracking/calibration pauses with a status message rather than guessing.
+
+Host tests now freeze the synthetic body at the WRONG angle while updating a
+separate camera/view ray. With swapped, inverted, differently-scaled input axes,
+the calibrated controller converges until the view ray intersects a chicken's
+bounding box, including after physical look input and in head/torso modes.
+Additional tests check eight sign/order combinations, response timeouts, manual
+look invalidation, and invalid-ray pausing. **Actual device alignment remains
+unverified until the user tests this build.**

@@ -24,3 +24,9 @@ commit `a223a14b0fe678b3d992b2248ecb3d31a42fce0a`, specifically
 `src/CameraSmoother.cpp` / `.hpp`. The reference branch had no top-level license
 file; no new license grant for that repository is asserted here. No frame-gen
 library or renderer assets are included or required.
+
+The HitResult ray-direction field ordering was cross-checked against the public
+LeviLamina HitResult declaration (not a new runtime dependency):
+https://github.com/LiteLDev/LeviLamina/blob/4ca13569fc0d1cdeb873cf6e7c48ddcc7a74e59c/src/mc/world/phys/HitResult.h
+No generated LeviLamina implementation is vendored here; Android layout validation
+is still required.

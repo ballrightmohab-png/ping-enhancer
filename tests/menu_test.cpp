@@ -26,6 +26,7 @@ int main() {
         std::abort();
     };
     using Type=pl::modmenu::ConfigType;
+    assert(find("autoCalibrate").type==Type::Toggle);
     assert(find("cameraSmoothing").type==Type::Toggle);
     assert(find("smoothness").type==Type::SliderFloat);
     assert(find("yawFirst").defaultValue=="false");

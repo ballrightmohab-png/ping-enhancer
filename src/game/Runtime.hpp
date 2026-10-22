@@ -5,6 +5,7 @@
 #include <pl/memory/Hook.hpp>
 #include <pl/memory/Vtable.hpp>
 #include <array>
+#include <cmath>
 #include <atomic>
 #include <functional>
 #include <mutex>
@@ -29,6 +30,7 @@ class Runtime {
     std::function<void(Player*)> onTick;
     std::function<void(bool)> onUi;
     std::atomic<bool> running{false};
+    std::atomic<std::uint64_t> manualLookSerial{0};
     std::recursive_mutex dispatchMutex;
     static void tickDetour(void* player) {
         auto* self=active;
@@ -43,6 +45,8 @@ class Runtime {
         std::lock_guard lock(self->dispatchMutex);
         // frame-gen's original-callback pattern. Physical input is unchanged,
         // including when aim is disabled; do not generate a second correction.
+        if(input && std::isfinite(input->x) && std::isfinite(input->y) &&
+           std::hypot(input->x,input->y)>.0001f) ++self->manualLookSerial;
         if(self->originalTurn) self->originalTurn(player,input);
     }
     static bool menuDetour(void* client) {
@@ -102,6 +106,7 @@ public:
         status="Standalone hooks active (launcher menu-state path)";
         return true;
     }
+    std::uint64_t physicalLookSequence() const { return manualLookSerial.load(); }
     bool sendAutomaticTurn(Player* player,Vec2 input) {
         std::lock_guard lock(dispatchMutex);
         if(!running || !originalTurn || !player) return false;

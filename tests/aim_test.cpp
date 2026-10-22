@@ -1,6 +1,7 @@
 #include "Aim.hpp"
 #include "Settings.hpp"
 #include "CameraSmoother.hpp"
+#include "LookCalibration.hpp"
 #include <cassert>
 #include <limits>
 int main() {
@@ -36,6 +37,56 @@ int main() {
     assert(magnitude(smoother.advance({},1.f,50,90))==0);
     assert(magnitude(smoother.pending())==0);
     assert(magnitude(smoother.advance({NAN,1},.01f,50,90))==0);
+    // Calibrate all axis-order/sign combinations and two different gains.
+    for(int swap=0;swap<2;++swap) for(int sign0:{-1,1}) for(int sign1:{-1,1}) {
+        LookCalibration calibration;
+        Angles view{};
+        Angles c0=swap?Angles{0,2.f*sign0}:Angles{.5f*sign0,0};
+        Angles c1=swap?Angles{.5f*sign1,0}:Angles{0,2.f*sign1};
+        for(int i=0;i<100 && !calibration.ready();++i) {
+            auto probe=calibration.update(view,i*.02,false);
+            if(probe) {
+                view.pitch+=c0.pitch*probe->first+c1.pitch*probe->second;
+                view.yaw+=c0.yaw*probe->first+c1.yaw*probe->second;
+            }
+        }
+        assert(calibration.ready());
+        auto command=calibration.encode({.3f,-.7f}); assert(command);
+        assert(std::abs(c0.pitch*command->first+c1.pitch*command->second-.3f)<.001f);
+        assert(std::abs(c0.yaw*command->first+c1.yaw*command->second+.7f)<.001f);
+    }
+    // Cross-coupled responses invert correctly; parallel axes are rejected.
+    for(bool singular:{false,true}) {
+        LookCalibration calibration;
+        Angles view{};
+        const Angles c0{1,.3f}, c1=singular?Angles{2,.6f}:Angles{-.2f,2};
+        for(int i=0;i<100 && !calibration.ready() && !calibration.failed();++i) {
+            auto probe=calibration.update(view,i*.02,false);
+            if(probe) {
+                view.pitch+=c0.pitch*probe->first+c1.pitch*probe->second;
+                view.yaw+=c0.yaw*probe->first+c1.yaw*probe->second;
+            }
+        }
+        assert(calibration.failed()==singular);
+        if(!singular) {
+            auto input=calibration.encode({.7f,-.4f}); assert(input);
+            assert(std::abs(c0.pitch*input->first+c1.pitch*input->second-.7f)<.001f);
+            assert(std::abs(c0.yaw*input->first+c1.yaw*input->second+.4f)<.001f);
+            input=calibration.encode({100,100}); assert(input);
+            assert(std::hypot(input->first,input->second)<=10.001f);
+            assert(!calibration.encode({NAN,0}));
+        }
+    }
+    LookCalibration noResponse;
+    for(int i=0;i<100;++i) noResponse.update({},i*.02,false);
+    assert(noResponse.failed());
+    assert(!noResponse.encode({1,1}));
+    assert(!noResponse.update({},3,false)); // Failure never repeats probes indefinitely.
+    LookCalibration manual;
+    assert(manual.update({},0,false));
+    assert(!manual.update({5,6},.1,true));
+    assert(!manual.update({5,6},.2,false)); // Manual movement invalidated the probe.
+    assert(manual.update({5,6},.4,false));
     Settings settings;
     assert(!settings.yawFirst && settings.cameraSmoothing);
     assert(settings.update("yawFirst","false") && !settings.yawFirst);

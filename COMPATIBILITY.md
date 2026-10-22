@@ -93,3 +93,16 @@ now adapted here, with pitch-first default matching its source. Automatic ticks
 supply commands through the captured original callback; physical input is not
 filtered. No original-callback call is considered proof of camera movement.
 The target/control/signature/device uncertainties described above remain.
+
+## Version 0.8.0 — user reports movement but wrong aim in 0.7.0
+
+The camera-turn entry point now has user-reported movement, but direction/target
+alignment was incorrect. The controller now uses the embedded game pick ray
+instead of actor rotation, and auto-calibrates axis order/sign/scale from bounded
+probe responses. The new HitResult ray-direction offset (12) follows the public
+HitResult field declaration, alongside the existing SDK start/wrapper offsets.
+It still needs Android 1.26.51 verification. Its use as centre-screen feedback
+requires first-person crosshair control mode; touch tap-picking is not assumed
+to provide a centre ray. New synthetic tests deliberately separate camera and
+body orientation, use swapped/inverted/scaled axes and assert ray/target overlap.
+These are controller tests, not a rendered Android crosshair verification.

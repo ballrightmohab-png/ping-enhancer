@@ -9,7 +9,7 @@
 namespace aim {
 struct Settings {
     bool enabled=false, adaptive=true, head=false;
-    bool players=true, mobs=false, yawFirst=false, cameraSmoothing=true;
+    bool players=true, mobs=false, yawFirst=false, cameraSmoothing=true, autoCalibrate=true;
     float fov=60, range=4, strength=50, speed=70, smoothness=50;
 
     bool accepts(bool player, bool mob) const {
@@ -24,6 +24,7 @@ struct Settings {
         if(key=="players") flag=&players;
         if(key=="mobs") flag=&mobs;
         if(key=="yawFirst") flag=&yawFirst;
+        if(key=="autoCalibrate") flag=&autoCalibrate;
         if(key=="cameraSmoothing") flag=&cameraSmoothing;
         if(flag) {
             if(value!="true" && value!="false") return false;

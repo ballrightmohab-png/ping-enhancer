@@ -42,6 +42,7 @@ int main() {
     assert(mod.enable(context));
     auto config=registeredMenu->onConfigChanged;
     auto toggle=registeredMenu->onToggle;
+    config(moduleId,"autoCalibrate","false");
     config(moduleId,"players","false");
     config(moduleId,"mobs","true");
     config(moduleId,"strength","100");
@@ -64,6 +65,7 @@ int main() {
     ActorFixture otherPlayer({{9.7f,0,9.7f},{10.3f,1.8f,10.3f}},dimension.data(),level.data(),true);
     void* actors[]={chicken.ptr(),otherPlayer.ptr()};
     fakehost::actors.assign(actors,actors+2);
+    fakehost::publishView=true;
     auto tick=[&]{std::this_thread::sleep_for(std::chrono::milliseconds(10)); fakehost::tick(local.ptr());};
     tick(); tick();
     assert(fakehost::turns==0); // Unknown menu state must pause aim.
@@ -100,7 +102,7 @@ int main() {
     config(moduleId,"strength","100");
     config(moduleId,"adaptive","false");
     chicken.bounds={{.8f,0,2.8f},{1.2f,.7f,3.2f}};
-    local.rotation={};
+    local.rotation={}; fakehost::cameraPose={};
     fakehost::pendingCamera={}; fakehost::integrateCamera=true;
     auto desired=aim::towards({0,1.68f,0},{1,.385f,3});
     assert(desired);
@@ -113,6 +115,48 @@ int main() {
     chicken.bounds.min.x-=2; chicken.bounds.max.x-=2;
     for(int i=0;i<70;++i) tick();
     assert(local.rotation.y>0);
+    // Crosshair follows the target even when BODY orientation is stale and the
+    // camera's raw axes are swapped, inverted, and scaled (touch-like model).
+    config(moduleId,"autoCalibrate","true");
+    local.rotation={-40,120}; // Intentionally wrong body orientation.
+    fakehost::freezeBody=true;
+    fakehost::cameraPose={}; fakehost::pendingCamera={};
+    fakehost::response0={0,-2}; fakehost::response1={-.5f,0};
+    for(int i=0;i<260;++i) tick();
+    auto movingDesired=aim::towards({0,1.68f,0},{-1,.385f,3});
+    assert(movingDesired);
+    float calibratedError=aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*movingDesired));
+    assert(calibratedError<1.f);
+    auto crosshairHits=[&] {
+        const auto ray=static_cast<sdk::Level*>(reinterpret_cast<void*>(level.data()))->viewRay();
+        if(ray.direction.z<=0) return false;
+        const float t=(3.f-ray.origin.z)/ray.direction.z;
+        const float x=ray.origin.x+ray.direction.x*t;
+        const float y=ray.origin.y+ray.direction.y*t;
+        return x>=chicken.bounds.min.x && x<=chicken.bounds.max.x &&
+            y>=chicken.bounds.min.y && y<=chicken.bounds.max.y;
+    };
+    assert(crosshairHits());
+    assert(local.rotation.x==-40 && local.rotation.y==120); // No body-field aiming.
+    // Real touch/mouse input is forwarded, then tracking re-centres the live view.
+    fakehost::physicalLook(local.ptr(),{.4f,-.2f});
+    for(int i=0;i<100;++i) tick();
+    assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*movingDesired))<1.f);
+    assert(crosshairHits());
+    config(moduleId,"head","true"); // Re-calibrate, then aim at the head fraction.
+    for(int i=0;i<220;++i) tick();
+    auto headDesired=aim::towards({0,1.68f,0},{-1,.63f,3});
+    assert(headDesired);
+    assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*headDesired))<1.f);
+    assert(crosshairHits());
+    // Invalid/no view ray must not fall back to stale BODY orientation.
+    fakehost::publishView=false;
+    sdk::ViewRay emptyRay{};
+    std::memcpy(level.data()+sdk::offsets::Level::mHitResultWrapper,&emptyRay,sizeof(emptyRay));
+    before=fakehost::turns;
+    for(int i=0;i<5;++i) tick();
+    assert(fakehost::turns==before);
+    // A world pick ray in the air is enough; no existing hit on the mob is needed.
     // The master switch prevents new requests even while idle tracking is active.
     toggle(moduleId,false);
     before=fakehost::turns;

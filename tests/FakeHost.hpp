@@ -22,19 +22,28 @@ inline std::vector<void*> actors;
 struct Hook { void* detour; };
 inline std::mutex mutex;
 inline std::map<void*,Hook> hooks;
+inline bool publishView=false, freezeBody=false;
+inline game::Vec2 cameraPose{};
+// Input response columns in the (pitch,yaw) view basis. Tests can invert/swap them.
+inline game::Vec2 response0{1,0}, response1{0,1};
 inline void normalTick(void* local) {
     ++originalTicks;
-    if(integrateCamera && local) {
-        auto* component=static_cast<game::Actor*>(local)->rotationComponent();
-        if(component) {
-            game::Vec2 rotation;
-            std::memcpy(&rotation,component,sizeof(rotation));
-            // Explicit frame-gen MODEL convention: first input is pitch, second is yaw.
-            rotation.x=std::clamp(rotation.x+pendingCamera.x,-89.9f,89.9f);
-            rotation.y=std::remainder(rotation.y+pendingCamera.y,360.f);
-            std::memcpy(component,&rotation,sizeof(rotation));
+    if(local && (integrateCamera || publishView)) {
+        auto* actor=static_cast<game::Actor*>(local);
+        if(integrateCamera) {
+            cameraPose.x=std::clamp(cameraPose.x+response0.x*pendingCamera.x+response1.x*pendingCamera.y,-89.9f,89.9f);
+            cameraPose.y=std::remainder(cameraPose.y+response0.y*pendingCamera.x+response1.y*pendingCamera.y,360.f);
+            if(!freezeBody && actor->rotationComponent())
+                std::memcpy(actor->rotationComponent(),&cameraPose,sizeof(cameraPose));
         }
         pendingCamera={};
+        if(publishView && actor->level()) {
+            constexpr float rad=3.14159265358979323846f/180.f;
+            const float pitch=cameraPose.x*rad, yaw=cameraPose.y*rad;
+            game::ViewRay ray{{0,1.68f,0},{-std::sin(yaw)*std::cos(pitch),-std::sin(pitch),std::cos(yaw)*std::cos(pitch)}};
+            auto* hit=reinterpret_cast<unsigned char*>(actor->level())+game::offsets::Level::mHitResultWrapper;
+            std::memcpy(hit,&ray,sizeof(ray));
+        }
     }
 }
 inline std::vector<void*> list(void*) { return actors; }

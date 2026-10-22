@@ -6,6 +6,7 @@ namespace game {
 struct Vec2 { float x,y; };
 struct Vec3 { float x,y,z; };
 struct AABB { Vec3 min,max; };
+struct ViewRay { Vec3 origin,direction; };
 struct BlockPos { int x,y,z; };
 namespace offsets {
 namespace Actor {
@@ -46,6 +47,13 @@ public:
 class Level {
 public:
     void* actorManager() const { return field<void*>(this,offsets::Level::mActorManager); }
+    ViewRay viewRay() const {
+        // HitResult: mStartPos @0, mRayDir @12, embedded wrapper @456.
+        // Same wrapper as the SDK hit-result readers; Vec3 field order checked
+        // against the public HitResult declaration. Version-specific on Android.
+        const auto* hit=reinterpret_cast<const unsigned char*>(this)+offsets::Level::mHitResultWrapper;
+        return {field<Vec3>(hit,0),field<Vec3>(hit,12)};
+    }
 };
 class Actor {
 public:
