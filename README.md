@@ -1,4 +1,4 @@
-# Adaptive Aim 0.4.0 — standalone LeviLauncher mod
+# Adaptive Aim 0.5.0 — standalone LeviLauncher mod
 
 **BedrockTools is no longer required, installed, loaded, fetched or queried.**
 This is a native Android ARM64 mod for LeviLaunchroid. It uses the launcher's
@@ -40,12 +40,16 @@ Settings reset on native mod disable/reload; custom disk persistence is not impl
 
 ## Standalone implementation
 
-`src/game/Runtime.hpp` batches scans of `libminecraftpe.so` using the launcher
-scanner. It owns five launcher-managed hooks: local-player normal tick plus
-chat/container open/close. Screen controllers are tracked independently so a
-nested close does not accidentally re-enable aiming. The original game routines
-are still called. Hook installation rolls back on failure, and disable removes
-all owned hooks. There is no BedrockTools event bus, API lookup or dependency.
+`src/game/Runtime.hpp` scans `libminecraftpe.so` using the launcher scanner.
+It owns **two hooks**: local-player normal tick and `ClientInstance::isShowingMenu`.
+The latter is resolved through RTTI slot **151**, using the same rule shipped in
+LeviLauncher **v1.5.27** for Minecraft **1.26.50+**. There is **no container-screen
+destructor signature or container/chat lifecycle hook requirement** anymore.
+
+Menu-query return values are preserved. Aim starts paused until the game reports
+that no menu is showing; unknown menu state is not treated as gameplay. Hook
+installation rolls back on failure and disable removes both hooks. There is no
+BedrockTools event bus, API lookup or dependency.
 
 The monitor retries incomplete scans/installation every two seconds while the
 module is enabled at the native lifecycle level. The live HUD distinguishes
@@ -97,8 +101,7 @@ done
 ```
 
 Host tests fake the launcher scanner/hook backend, not another mod's API. They
-exercise late game availability, missing signatures, hook rollback, nested UI
-screens, cleanup/re-enable and chicken-sized targeting through the installed
+exercise late game availability, missing signatures, hook rollback, menu-query return values, unknown-UI-state pausing, cleanup/re-enable and chicken-sized targeting through the installed
 tick detour. They also cover independent target toggles, zero strength, range/cone
 and obstruction rejection, yaw wrapping and turn caps. CI checks the Android
 ELF dynamic table/symbols for an unwanted BedrockTools dependency.
@@ -106,8 +109,8 @@ ELF dynamic table/symbols for an unwanted BedrockTools dependency.
 These are **not real-device compatibility tests**. The collision check uses
 solid voxels, not exact shapes; glass/partial blocks may differ from visibility.
 There is no friend/team/spectator/death filter or target-lock hysteresis. Nearby
-crowded targets may switch. Only reported chat/container lifecycles pause aim;
-other pause/menu coverage requires device validation. Other camera mods may
+crowded targets may switch. Menu pausing depends on the game invoking `isShowingMenu`; actual coverage and
+query frequency still need device validation. Other camera mods may
 modify the turn behavior. No broad version support or gameplay success claimed.
 
 ## Credits
@@ -115,3 +118,20 @@ modify the turn behavior. No broad version support or gameplay success claimed.
 Bundled layout constants and byte patterns were adapted from BedrockTools
 revision `b0ed3e9a0e5cb598dc5c93f22e5f159de80d5d95`, but that project is no longer a
 dependency. See `THIRD_PARTY_NOTICES.md` and the preserved MIT notice in LICENSE.
+
+## 0.5.0 workaround for the reported missing destructor
+
+The user reported `ContainerScreenControllerDtor` missing on Minecraft 1.26.51,
+LeviLauncher 1.5.27. **0.4.0 cannot aim on that installation.** Version 0.5.0
+removes all four container/chat lifecycle signatures and uses the launcher's
+RTTI-backed menu-state path instead. That removes this particular startup
+requirement without just disabling the menu guard.
+
+Host tests check that missing menu-state lookup still prevents installation,
+unknown UI state pauses aim, true/false results pause/resume assistance, and a
+chicken-sized target reaches the turn routine through the installed tick hook.
+These are **not proof of real-game compatibility or camera movement**.
+
+See `COMPATIBILITY.md` for findings and the remaining device checks.
+`scripts/audit_game.py` audits the six byte signatures in a user-supplied ARM64
+Minecraft `.so` or APK. It does not yet audit the RTTI lookup or function identity.

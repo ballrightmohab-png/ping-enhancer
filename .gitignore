@@ -4,3 +4,7 @@ build/
 __pycache__/
 *.so
 *.levipack
+# User-supplied game binaries are inputs for local auditing, never source assets.
+*.apk
+*.apks
+*.xapk

@@ -15,25 +15,30 @@ int main() {
     int ticks=0; bool paused=false;
     auto tick=[&](game::Player*){++ticks;};
     auto ui=[&](bool value){paused=value;};
-    fakehost::failHook=2;
+    fakehost::failHook=1;
     assert(!runtime.install(tick,ui,status));
-    assert(fakehost::hookCount()==0); // Partial install rolled back.
+    assert(fakehost::hookCount()==0); // Menu hook rolled back if tick hook fails.
     fakehost::failHook=-1;
     assert(runtime.install(tick,ui,status));
-    assert(fakehost::hookCount()==5);
-    int actor=0, container1=1, container2=2, chat=3;
+    assert(fakehost::hookCount()==2);
+    assert(paused); // Unknown UI state fails closed.
+    int actor=0;
     fakehost::tick(&actor);
     assert(ticks==1 && fakehost::originalTicks==1);
-    fakehost::screen(S::ContainerScreenControllerOpen,&container1); assert(paused);
-    fakehost::screen(S::ContainerScreenControllerOpen,&container2); assert(paused);
-    fakehost::screen(S::ContainerScreenControllerDtor,&container1); assert(paused);
-    fakehost::screen(S::ChatScreenOpen,&chat); assert(paused);
-    fakehost::screen(S::ContainerScreenControllerDtor,&container2); assert(paused);
-    fakehost::screen(S::ChatScreenDtor,&chat); assert(!paused);
+    assert(!fakehost::queryMenu(false)); assert(!paused);
+    assert(fakehost::queryMenu(true)); assert(paused);
+    assert(!fakehost::queryMenu(false)); assert(!paused);
     runtime.stop();
     assert(fakehost::hookCount()==0);
     assert(runtime.install(tick,ui,status));
-    assert(fakehost::hookCount()==5);
+    assert(paused && fakehost::hookCount()==2);
     runtime.stop();
-    assert(fakehost::hookCount()==0);
+    // Unsupported menu lookup must not be silently bypassed.
+    fakehost::menuAvailable=false;
+    { game::Runtime unavailable;
+      assert(!unavailable.resolve(status));
+      assert(status.find("isShowingMenu")!=std::string::npos);
+      assert(!unavailable.install(tick,ui,status));
+      assert(fakehost::hookCount()==0);
+    }
 }

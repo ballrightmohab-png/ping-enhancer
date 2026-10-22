@@ -48,11 +48,11 @@ int main() {
     config(moduleId,"fov","60");
     toggle(moduleId,true); // Minecraft deliberately not available yet.
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    { std::lock_guard lock(statusMutex); assert(lastStatus.find("Missing game signatures")!=std::string::npos); }
+    { std::lock_guard lock(statusMutex); assert(lastStatus.find("Missing game functions")!=std::string::npos); }
     fakehost::gameReady=true;
-    for(int n=0;n<200 && fakehost::hookCount()!=5;++n)
+    for(int n=0;n<200 && fakehost::hookCount()!=2;++n)
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    assert(fakehost::hookCount()==5); // Automatic game hook installation.
+    assert(fakehost::hookCount()==2); // Automatic game hook installation.
     alignas(16) std::array<unsigned char,4096> dimension{}, level{};
     int region=0, manager=0;
     auto* regionPtr=&region; auto* managerPtr=&manager;
@@ -66,9 +66,17 @@ int main() {
     fakehost::actors.assign(actors,actors+2);
     auto tick=[&]{std::this_thread::sleep_for(std::chrono::milliseconds(10)); fakehost::tick(local.ptr());};
     tick(); tick();
+    assert(fakehost::turns==0); // Unknown menu state must pause aim.
+    assert(!fakehost::queryMenu(false));
+    tick(); tick();
     assert(fakehost::turns>0);
     assert(fakehost::lastDelta.x>0); // Downward pitch toward chicken torso.
     int before=fakehost::turns;
+    assert(fakehost::queryMenu(true));
+    tick(); assert(fakehost::turns==before);
+    assert(!fakehost::queryMenu(false));
+    tick(); assert(fakehost::turns>before);
+    before=fakehost::turns;
     config(moduleId,"mobs","false"); tick(); assert(fakehost::turns==before);
     config(moduleId,"mobs","true");
     config(moduleId,"strength","0"); tick(); assert(fakehost::turns==before);

@@ -1,0 +1,74 @@
+# Compatibility investigation: Minecraft 1.26.51 / LeviLauncher 1.5.27
+
+## Verified
+
+- LeviLaunchroid release tag `v1.5.27` points to commit
+  `a8531393d3a336812748a9bb45582a3d9791af7b`.
+- Its `app/src/main/cpp/preloader` gitlink points to
+  `5d108da350ce3e7f13f51415f81e65344ecd5d14`, exactly the revision pinned in
+  this project's CMakeLists.txt and xmake.lua. No preloader update is needed
+  merely to align with launcher 1.5.27.
+- The standalone mod's existing CI build passed Android ARM64 compilation,
+  launcher-backend host tests, and the check for a BedrockTools binary dependency.
+  See [run 39810045427](https://github.com/ballrightmohab-png/ping-enhancer/actions/runs/39810045427).
+  That result does **not** establish game compatibility.
+
+Source for the launcher revision:
+https://github.com/LiteLDev/LeviLaunchroid/tree/a8531393d3a336812748a9bb45582a3d9791af7b/app/src/main/cpp
+
+## Reported failure in 0.4.0
+
+The user reports `ContainerScreenControllerDtor` does not resolve on their
+Minecraft 1.26.51 installation. Current runtime requires that function to track
+closing container screens. Therefore this build is **not compatible/working on
+that installation**, regardless of successful compilation.
+
+The destructor has not been located in the user's binary. Version 0.5.0 does
+not guess its address or weaken its pattern; it stops depending on that function.
+
+## Version 0.5.0 alternate menu-state path
+
+LeviLauncher v1.5.27's own rules resolve `ClientInstance::isShowingMenu` through
+RTTI name `14ClientInstance`, slot 151 for Minecraft >= 1.26.50. The mod now uses
+the same exported launcher vtable resolver and hooks that query, plus normal tick.
+The four container/chat lifecycle byte signatures have been removed. Unknown UI
+state pauses assistance until a real query returns false. A failed RTTI lookup
+still blocks installation; a failed tick hook rolls back the menu hook.
+
+Source evidence for the slot/type rule:
+https://github.com/LiteLDev/LeviLaunchroid/blob/a8531393d3a336812748a9bb45582a3d9791af7b/resources/preloader/preloader_signature_rules_source.json
+https://github.com/LiteLDev/preloader-android/blob/5d108da350ce3e7f13f51415f81e65344ecd5d14/src/pl/runtime/GameHooks.cpp
+
+Host tests cover this alternate path and simulated target-to-turn behavior.
+**Actual query frequency, menu coverage, native layouts and camera movement on
+Minecraft 1.26.51 remain unverified without the binary/device.**
+
+## Required evidence for a real fix
+
+1. Obtain the user's installed ARM64 `libminecraftpe.so`, or the APK/split APK
+   containing `lib/arm64-v8a/libminecraftpe.so` (user-supplied copy, not a random
+   game download). Do not commit the APK or native binary to Git.
+2. Run the audit below. Record its SHA-256, each pattern's match count and the
+   candidate ELF virtual addresses. A bare version string does not uniquely
+   identify an exact Android binary.
+3. Verify the RTTI-resolved menu query and the six remaining function patterns;
+   require unique executable matches. Verify function identities/layouts,
+   not just byte counts.
+4. Rebuild and test on a device with Minecraft 1.26.51 + LeviLauncher 1.5.27:
+   start/stop/reload, open/close inventory and chat, aim at a chicken and player,
+   check independent switches/strength zero, and observe actual camera movement.
+   A test mock cannot substitute for these device checks.
+
+## Offline signature audit
+
+```sh
+python3 scripts/audit_game.py /path/to/libminecraftpe.so --output build/game-audit.json
+# Or:
+python3 scripts/audit_game.py /path/to/installed-arm64.apk --output build/game-audit.json
+```
+
+Exit 0 means all bundled patterns have exactly one 4-byte-aligned match within
+executable ELF load segments; exit 1 means a missing/ambiguous signature; exit 2
+means bad input. The tool extracts only the ARM64 library from an APK, reports its
+SHA-256, does not execute game code, and does not download anything. Even exit 0
+is **not** proof of correct function identity, layouts or successful gameplay.

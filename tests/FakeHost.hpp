@@ -11,7 +11,9 @@ namespace fakehost {
 inline std::atomic<bool> gameReady{false};
 inline std::atomic<int> missing{-1};
 inline int failHook=-1, hookCalls=0, turns=0, originalTicks=0;
-inline bool blocked=false;
+inline bool blocked=false, showingMenu=false;
+inline std::atomic<bool> menuAvailable{true};
+inline bool menuQuery(void*) { return showingMenu; }
 inline game::Vec2 lastDelta{};
 inline std::vector<void*> actors;
 struct Hook { void* detour; };
@@ -23,11 +25,6 @@ inline bool player(void* a) { return !actors.empty() && a==actors.back(); }
 inline bool invisible(void*) { return false; }
 inline bool solid(void*,const game::BlockPos&) { return blocked; }
 inline void turn(void*,game::Vec2* delta) { ++turns; lastDelta=*delta; }
-// Distinct functions/addresses so all four screen hooks can be tracked independently.
-inline void* containerOpen(void* a,void*,void*,void*,void*,void*,void*,void*) { return a; }
-inline void* containerClose(void* a,void*,void*,void*,void*,void*,void*,void*) { return a; }
-inline void* chatOpen(void* a,void*,void*,void*,void*,void*,void*,void*) { return a; }
-inline void* chatClose(void* a,void*,void*,void*,void*,void*,void*,void*) { return a; }
 inline void* address(game::Signature id) {
     using S=game::Signature;
     switch(id) {
@@ -37,10 +34,6 @@ inline void* address(game::Signature id) {
         case S::ActorIsInvisible: return reinterpret_cast<void*>(&invisible);
         case S::BlockSourceIsSolidBlockingBlock: return reinterpret_cast<void*>(&solid);
         case S::LocalPlayerApplyTurnDelta: return reinterpret_cast<void*>(&turn);
-        case S::ContainerScreenControllerOpen: return reinterpret_cast<void*>(&containerOpen);
-        case S::ContainerScreenControllerDtor: return reinterpret_cast<void*>(&containerClose);
-        case S::ChatScreenOpen: return reinterpret_cast<void*>(&chatOpen);
-        case S::ChatScreenDtor: return reinterpret_cast<void*>(&chatClose);
         default: return nullptr;
     }
 }
@@ -54,12 +47,21 @@ inline void tick(void* local) {
     auto fn=reinterpret_cast<void(*)(void*)>(detour(game::Signature::NormalTick));
     assert(fn); fn(local);
 }
-inline void screen(game::Signature id,void* controller) {
-    auto fn=reinterpret_cast<void*(*)(void*,void*,void*,void*,void*,void*,void*,void*)>(detour(id));
-    assert(fn); fn(controller,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr);
+inline bool queryMenu(bool showing) {
+    showingMenu=showing;
+    void* target=reinterpret_cast<void*>(&menuQuery);
+    void* callback=nullptr;
+    { std::lock_guard lock(mutex); auto it=hooks.find(target); if(it!=hooks.end()) callback=it->second.detour; }
+    assert(callback);
+    return reinterpret_cast<bool(*)(void*)>(callback)(nullptr);
 }
 }
 namespace pl::memory {
+std::uintptr_t resolveVtableFunction(std::string_view type,std::size_t slot,std::string_view module) {
+    assert(type=="14ClientInstance" && slot==151 && module=="libminecraftpe.so");
+    return fakehost::gameReady && fakehost::menuAvailable
+        ?reinterpret_cast<std::uintptr_t>(&fakehost::menuQuery):0;
+}
 std::unordered_map<std::string,std::uintptr_t> resolveSignatures(std::span<const std::string> requests,std::string_view module) {
     assert(module=="libminecraftpe.so");
     std::unordered_map<std::string,std::uintptr_t> results;
