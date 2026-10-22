@@ -1,5 +1,6 @@
 #include "Aim.hpp"
 #include "Settings.hpp"
+#include "CameraSmoother.hpp"
 #include <cassert>
 #include <limits>
 int main() {
@@ -16,8 +17,27 @@ int main() {
     assert(yawFirst.first==-12 && yawFirst.second==5);
     auto pitchFirst=toLookDelta({5,-12},false);
     assert(pitchFirst.first==5 && pitchFirst.second==-12);
+    CameraSmoother smoother;
+    auto first=smoother.advance({10,-20},.01f,50,90);
+    assert(first.pitch>0 && first.yaw<0);
+    assert(magnitude(first)<=.90001f);
+    Angles released=first;
+    // Automatic draining even with zero further input; angle conservation.
+    for(int i=0;i<1000;++i) {
+        auto next=smoother.advance({},.01f,50,90);
+        released.pitch+=next.pitch; released.yaw+=next.yaw;
+    }
+    assert(std::abs(released.pitch+smoother.pending().pitch-10)<.001f);
+    assert(std::abs(released.yaw+smoother.pending().yaw+20)<.001f);
+    smoother.advance({4,5},.01f,50,90);
+    smoother.reset();
+    assert(magnitude(smoother.advance({},.01f,50,90))==0);
+    smoother.advance({4,5},.01f,50,90);
+    assert(magnitude(smoother.advance({},1.f,50,90))==0);
+    assert(magnitude(smoother.pending())==0);
+    assert(magnitude(smoother.advance({NAN,1},.01f,50,90))==0);
     Settings settings;
-    assert(settings.yawFirst);
+    assert(!settings.yawFirst && settings.cameraSmoothing);
     assert(settings.update("yawFirst","false") && !settings.yawFirst);
     assert(settings.accepts(true,true));
     assert(!settings.accepts(false,true));

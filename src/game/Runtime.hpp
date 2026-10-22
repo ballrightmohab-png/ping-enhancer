@@ -16,14 +16,16 @@ namespace game {
 class Runtime {
     using Tick=void(*)(void*);
     using Menu=bool(*)(void*);
+    using Turn=void(*)(void*,Vec2*);
     inline static Runtime* active=nullptr;
     std::array<std::uintptr_t,patterns.size()> addresses{};
     std::uintptr_t menuAddress=0;
     // Same RTTI/slot rule used by LeviLauncher v1.5.27 for MC >= 1.26.50.
     static constexpr unsigned menuSlot=151;
-    std::array<pl::memory::HookHandle,2> hooks;
+    std::array<pl::memory::HookHandle,3> hooks;
     Tick originalTick=nullptr;
     Menu originalMenu=nullptr;
+    Turn originalTurn=nullptr;
     std::function<void(Player*)> onTick;
     std::function<void(bool)> onUi;
     std::atomic<bool> running{false};
@@ -34,6 +36,14 @@ class Runtime {
         std::lock_guard lock(self->dispatchMutex);
         if(self->originalTick) self->originalTick(player);
         if(self->running && self->onTick) self->onTick(static_cast<Player*>(player));
+    }
+    static void turnDetour(void* player,Vec2* input) {
+        auto* self=active;
+        if(!self) return;
+        std::lock_guard lock(self->dispatchMutex);
+        // frame-gen's original-callback pattern. Physical input is unchanged,
+        // including when aim is disabled; do not generate a second correction.
+        if(self->originalTurn) self->originalTurn(player,input);
     }
     static bool menuDetour(void* client) {
         auto* self=active;
@@ -82,11 +92,22 @@ public:
         hooks[0]=pl::memory::HookHandle(reinterpret_cast<void*>(menuAddress),reinterpret_cast<void*>(&menuDetour),
             reinterpret_cast<void**>(&originalMenu));
         if(!hooks[0].installed()) { status="Menu-state hook installation failed"; stop(); return false; }
+        hooks[1]=pl::memory::HookHandle(function<void*>(Signature::LocalPlayerApplyTurnDelta),
+            reinterpret_cast<void*>(&turnDetour),reinterpret_cast<void**>(&originalTurn));
+        if(!hooks[1].installed()) { status="Camera turn hook installation failed"; stop(); return false; }
         running=true;
-        hooks[1]=pl::memory::HookHandle(function<void*>(Signature::NormalTick),reinterpret_cast<void*>(&tickDetour),
+        hooks[2]=pl::memory::HookHandle(function<void*>(Signature::NormalTick),reinterpret_cast<void*>(&tickDetour),
             reinterpret_cast<void**>(&originalTick));
-        if(!hooks[1].installed()) { status="Local player tick hook installation failed"; stop(); return false; }
+        if(!hooks[2].installed()) { status="Local player tick hook installation failed"; stop(); return false; }
         status="Standalone hooks active (launcher menu-state path)";
+        return true;
+    }
+    bool sendAutomaticTurn(Player* player,Vec2 input) {
+        std::lock_guard lock(dispatchMutex);
+        if(!running || !originalTurn || !player) return false;
+        // A game-tick-driven command uses the captured original callback, just
+        // like frame-gen's detour, without recursively re-entering our own hook.
+        originalTurn(player,&input);
         return true;
     }
     void stop() {

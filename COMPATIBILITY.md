@@ -84,3 +84,12 @@ is **not** proof of correct function identity, layouts or successful gameplay.
   a negative-direction grid-aligned endpoint and falsely report an obstruction.
 - Immediate actor rotation checks were replaced by later-tick observation. Actual
   rendered camera movement on the user's installation remains unverified.
+
+## Version 0.7.0 frame-gen camera adaptation
+
+The user's frame-gen branch provides a real turn detour and an exponential
+residual-reservoir smoother (not merely image interpolation). That structure is
+now adapted here, with pitch-first default matching its source. Automatic ticks
+supply commands through the captured original callback; physical input is not
+filtered. No original-callback call is considered proof of camera movement.
+The target/control/signature/device uncertainties described above remain.

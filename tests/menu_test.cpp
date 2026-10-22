@@ -26,6 +26,9 @@ int main() {
         std::abort();
     };
     using Type=pl::modmenu::ConfigType;
+    assert(find("cameraSmoothing").type==Type::Toggle);
+    assert(find("smoothness").type==Type::SliderFloat);
+    assert(find("yawFirst").defaultValue=="false");
     assert(find("players").type==Type::Toggle);
     assert(find("mobs").type==Type::Toggle);
     assert(find("strength").type==Type::SliderFloat);

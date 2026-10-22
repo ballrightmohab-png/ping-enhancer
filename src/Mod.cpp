@@ -1,5 +1,6 @@
 #include "Aim.hpp"
 #include "Settings.hpp"
+#include "CameraSmoother.hpp"
 #include "game/Runtime.hpp"
 #include <pl/Mod.hpp>
 #include <pl/ModMenu.hpp>
@@ -20,6 +21,7 @@ constexpr auto moduleId = "adaptiveaim.assist";
 class AdaptiveAim {
     std::mutex mutex;
     aim::Settings settings;
+    aim::CameraSmoother cameraSmoother;
     std::mutex runtimeMutex;
     bool uiBlocked=false;
     game::Runtime runtime;
@@ -39,7 +41,7 @@ class AdaptiveAim {
     aim::Angles rotationBaseline{};
     Clock::time_point firstRequest{};
     void resetTracking() {
-        targetToken=0; awaitingRotation=false; firstRequest={};
+        targetToken=0; awaitingRotation=false; firstRequest={}; cameraSmoother.reset();
     }
 
     void report(const std::string& text) {
@@ -79,11 +81,9 @@ class AdaptiveAim {
     using List = std::vector<void*>(*)(void*);
     using Check = bool(*)(void*);
     using Solid = bool(*)(void*, const sdk::BlockPos&);
-    using Turn = void(*)(void*, sdk::Vec2*);
     List list=nullptr;
     Check isPlayer=nullptr, invisible=nullptr;
     Solid solid=nullptr;
-    Turn turn=nullptr;
 
     // Conservative voxel traversal: any solid voxel intersected by the segment blocks it.
     // Not a shape-aware Minecraft raycast (glass/partial blocks can differ).
@@ -162,16 +162,22 @@ class AdaptiveAim {
             resetTracking();
             return;
         }
-        if(bestToken!=targetToken) { awaitingRotation=false; firstRequest={}; }
+        if(bestToken!=targetToken) { awaitingRotation=false; firstRequest={}; cameraSmoother.reset(); }
         targetToken=bestToken;
-        auto delta=aim::step(best,dt,10.f,settings.speed,settings.adaptive);
+        // Subtract unreleased correction so a closed-loop tracker does not keep
+        // accumulating the same camera error into the smoothing reservoir.
+        const auto pending=settings.cameraSmoothing?cameraSmoother.pending():aim::Angles{};
+        aim::Angles remaining{best.pitch-pending.pitch,best.yaw-pending.yaw};
+        auto delta=aim::step(remaining,dt,10.f,settings.speed,settings.adaptive);
         const float strength=settings.strength/100.f;
         delta.pitch*=strength;
         delta.yaw*=strength;
+        if(settings.cameraSmoothing)
+            delta=cameraSmoother.advance(delta,dt,settings.smoothness,settings.speed*strength);
         delta.pitch=std::clamp(rot.x+delta.pitch,-89.9f,89.9f)-rot.x;
         if(aim::magnitude(best)<.05f) {
             tickStatus="Auto tracking: aligned (no input needed)";
-            awaitingRotation=false;
+            awaitingRotation=false; cameraSmoother.reset();
             return;
         }
         if(!awaitingRotation) {
@@ -179,7 +185,9 @@ class AdaptiveAim {
         }
         const auto mapped=aim::toLookDelta(delta,settings.yawFirst);
         sdk::Vec2 input{mapped.first,mapped.second};
-        turn(player,&input); // Automatic request: no mouse/touch event required.
+        if(!runtime.sendAutomaticTurn(player,input)) {
+            tickStatus="Automatic camera callback unavailable"; resetTracking(); return;
+        }
         if(rotationChanged) tickStatus="Auto tracking: player rotation updated";
         else if(now-firstRequest>std::chrono::milliseconds(500))
             tickStatus="Auto requests sent; camera response unconfirmed (check input axes)";
@@ -205,7 +213,6 @@ class AdaptiveAim {
         isPlayer=runtime.function<Check>(Id::ActorIsPlayer);
         invisible=runtime.function<Check>(Id::ActorIsInvisible);
         solid=runtime.function<Solid>(Id::BlockSourceIsSolidBlockingBlock);
-        turn=runtime.function<Turn>(Id::LocalPlayerApplyTurnDelta);
         bool installed=runtime.install([this](auto* player){tick(player);},[this](bool blocked){
             std::lock_guard lock(mutex); uiBlocked=blocked;
         },status);
@@ -236,7 +243,9 @@ public:
             .config("adaptive","Adaptive slowdown",ConfigType::Toggle,"true")
             .config("fov","Aim cone (degrees)",ConfigType::SliderFloat,"60","1","180")
             .config("range","Range (blocks)",ConfigType::SliderFloat,"4","1","6")
-            .config("yawFirst","Camera input: yaw first (advanced)",ConfigType::Toggle,"true")
+            .config("cameraSmoothing","Frame-gen camera smoothing",ConfigType::Toggle,"true")
+            .config("smoothness","Camera smoothness",ConfigType::SliderFloat,"50","0","95")
+            .config("yawFirst","Camera input: yaw first (advanced)",ConfigType::Toggle,"false")
             .config("speed","Maximum turn (degrees/sec)",ConfigType::SliderFloat,"70","5","90")
             .registerModule();
         if(!registered) return false;

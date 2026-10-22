@@ -1,4 +1,4 @@
-# Adaptive Aim 0.6.0 — standalone LeviLauncher mod
+# Adaptive Aim 0.7.0 — standalone LeviLauncher mod
 
 **BedrockTools is no longer required, installed, loaded, fetched or queried.**
 This is a native Android ARM64 mod for LeviLaunchroid. It uses the launcher's
@@ -31,9 +31,12 @@ Open the launcher mod menu → **Auto Target Tracking**:
 - **Adaptive slowdown**: slows near the aim point.
 - **Aim cone**: 1–180°, default 60, measured in both pitch and yaw.
 - **Range**: 1–6 blocks, default 4.
-- **Camera input: yaw first (advanced)**: on by default; off selects the prior
-  pitch-first mapping. Android axis order is not yet device-verified. If it
+- **Camera input: yaw first (advanced)**: off by default, matching frame-gen
+  source's pitch-first convention; on selects yaw-first. Android axis order is not yet device-verified. If it
   moves on the wrong axis, turn the master off before changing this option.
+- **Frame-gen camera smoothing**: on by default; filters automatic corrections
+  using frame-gen's exponential reservoir approach.
+- **Camera smoothness**: 0–95, default 50.
 - **Maximum turn**: 5–90°/second, default 70; strength scales the resulting turn.
 
 No auto-clicking, reach, packets, ESP or extra gameplay modules. The Mob category
@@ -44,14 +47,15 @@ Settings reset on native mod disable/reload; custom disk persistence is not impl
 ## Standalone implementation
 
 `src/game/Runtime.hpp` scans `libminecraftpe.so` using the launcher scanner.
-It owns **two hooks**: local-player normal tick and `ClientInstance::isShowingMenu`.
+It owns **three hooks**: local-player normal tick, `LocalPlayerApplyTurnDelta`,
+and `ClientInstance::isShowingMenu`.
 The latter is resolved through RTTI slot **151**, using the same rule shipped in
 LeviLauncher **v1.5.27** for Minecraft **1.26.50+**. There is **no container-screen
 destructor signature or container/chat lifecycle hook requirement** anymore.
 
 Menu-query return values are preserved. Aim starts paused until the game reports
 that no menu is showing; unknown menu state is not treated as gameplay. Hook
-installation rolls back on failure and disable removes both hooks. There is no
+installation rolls back on failure and disable removes all three hooks. There is no
 BedrockTools event bus, API lookup or dependency.
 
 The monitor retries incomplete scans/installation every two seconds while the
@@ -166,3 +170,37 @@ following it when it moves across the view, and stop at master-off, all with
 zero look-input events. This validates the controller **under that declared
 model**, not the real Minecraft camera ABI. No direct rotation-field write was
 added to production; only the test model updates its synthetic rotation.
+
+## 0.7.0 — camera path adapted from your frame-gen repo
+
+Reference: `ballrightmohab-png/frame-gen`, branch `arena/01a0f331-frame-gen`,
+revision `a223a14b0fe678b3d992b2248ecb3d31a42fce0a`, `src/CameraSmoother.cpp/.hpp`.
+Main did not contain that implementation. Source was adapted at your request;
+this does not add a FrameGen binary/runtime dependency.
+
+- Added a turn hook with a captured original callback, following frame-gen's
+  detour/original pattern. Physical mouse/touch input passes through unchanged.
+- Idle corrections are generated on game ticks, processed by a two-stage
+  exponential residual-reservoir smoother, then forwarded through the captured
+  original turn callback. There is **no mouse-motion gate** and no recursive
+  re-entry through our own hook.
+- The controller subtracts already-pending correction before generating another
+  step, caps the released turn speed and cancels residuals at menu entry, target
+  loss/replacement, config changes, stalls and master-off. Cancellation discards
+  residuals rather than flushing an unwanted final turn.
+- Pitch-first is the new default, matching frame-gen's `Vec2 {pitch,yaw}` source
+  convention. This is not independently verified against your Android binary;
+  the advanced axis toggle still exists.
+- Did not copy frame interpolation, image warping, FOV/perspective hooks or broad
+  fallback byte patterns. Those do not establish actual entity tracking and
+  would introduce more unverified entry points.
+
+For the first test, disable FrameGen's camera smoothing and other camera/zoom
+mods to avoid overlapping smoothing/hook effects. Enable Auto Target Tracking,
+Target mobs, strength 100 and cone 60, stand 2–3 blocks from a chicken in open
+space and leave your mouse untouched. Read the live status if it does not move.
+
+Host tests cover smoothing/residual conservation, bounded release, reset/stall
+cancellation, unchanged physical input, one original callback per automatic
+request, stopped-runtime rejection and deferred idle target following. **These
+still do not validate actual rendered camera movement on your device.**

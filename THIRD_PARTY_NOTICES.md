@@ -14,3 +14,13 @@ LeviLauncher's preloader API is the host plugin interface, built from
 LiteLDev/preloader-android revision `5d108da350ce3e7f13f51415f81e65344ecd5d14`.
 It provides the native mod lifecycle, menu UI, signature scanner and hook chain.
 See that project's LICENSE for its terms. It is supplied by the launcher at runtime.
+
+## User-requested frame-gen adaptation
+
+The automatic-correction smoother in `src/CameraSmoother.hpp` and the original
+turn-callback bridge were adapted at the user's explicit request from their
+repository `ballrightmohab-png/frame-gen`, branch `arena/01a0f331-frame-gen`,
+commit `a223a14b0fe678b3d992b2248ecb3d31a42fce0a`, specifically
+`src/CameraSmoother.cpp` / `.hpp`. The reference branch had no top-level license
+file; no new license grant for that repository is asserted here. No frame-gen
+library or renderer assets are included or required.

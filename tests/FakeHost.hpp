@@ -29,9 +29,9 @@ inline void normalTick(void* local) {
         if(component) {
             game::Vec2 rotation;
             std::memcpy(&rotation,component,sizeof(rotation));
-            // Explicit MODEL convention: first input is yaw, second is pitch.
-            rotation.x=std::clamp(rotation.x+pendingCamera.y,-89.9f,89.9f);
-            rotation.y=std::remainder(rotation.y+pendingCamera.x,360.f);
+            // Explicit frame-gen MODEL convention: first input is pitch, second is yaw.
+            rotation.x=std::clamp(rotation.x+pendingCamera.x,-89.9f,89.9f);
+            rotation.y=std::remainder(rotation.y+pendingCamera.y,360.f);
             std::memcpy(component,&rotation,sizeof(rotation));
         }
         pendingCamera={};
@@ -66,6 +66,10 @@ inline unsigned hookCount() { std::lock_guard lock(mutex); return hooks.size(); 
 inline void tick(void* local) {
     auto fn=reinterpret_cast<void(*)(void*)>(detour(game::Signature::NormalTick));
     assert(fn); fn(local);
+}
+inline void physicalLook(void* local,game::Vec2 input) {
+    auto fn=reinterpret_cast<void(*)(void*,game::Vec2*)>(detour(game::Signature::LocalPlayerApplyTurnDelta));
+    assert(fn); fn(local,&input);
 }
 inline bool queryMenu(bool showing) {
     showingMenu=showing;

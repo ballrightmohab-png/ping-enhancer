@@ -50,9 +50,9 @@ int main() {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     { std::lock_guard lock(statusMutex); assert(lastStatus.find("Missing game functions")!=std::string::npos); }
     fakehost::gameReady=true;
-    for(int n=0;n<200 && fakehost::hookCount()!=2;++n)
+    for(int n=0;n<200 && fakehost::hookCount()!=3;++n)
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    assert(fakehost::hookCount()==2); // Automatic game hook installation.
+    assert(fakehost::hookCount()==3); // Automatic game hook installation.
     alignas(16) std::array<unsigned char,4096> dimension{}, level{};
     int region=0, manager=0;
     auto* regionPtr=&region; auto* managerPtr=&manager;
@@ -70,7 +70,7 @@ int main() {
     assert(!fakehost::queryMenu(false));
     tick(); tick();
     assert(fakehost::turns>0);
-    assert(fakehost::lastDelta.y>0); // Yaw-first input: pitch is the second component.
+    assert(fakehost::lastDelta.x>0); // frame-gen pitch-first command.
     int before=fakehost::turns;
     assert(fakehost::queryMenu(true));
     tick(); assert(fakehost::turns==before);
