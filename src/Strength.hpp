@@ -2,7 +2,7 @@
 #include "CameraSmoother.hpp"
 
 namespace aim {
-// 10..90: progressively quicker tracking. 100: strongest bounded lock, without
+// 10..90: progressively quicker tracking. 100: full angular correction, without
 // adaptive slowdown or the smoothing reservoir. Target filters/calibration stay
 // outside this function and are unchanged by strength.
 inline Angles strengthCorrection(Angles error,float dt,float strength,float baseSpeed,
@@ -18,8 +18,9 @@ inline Angles strengthCorrection(Angles error,float dt,float strength,float base
         smoother.reset();
         const float distance=magnitude(error);
         if(distance<.05f) return {};
-        const float scale=std::min(1.f,720.f*std::min(dt,.1f)/distance);
-        return {error.pitch*scale,error.yaw*scale};
+        // Crossing through a target can flip yaw by ~180 degrees in one tick.
+        // Do not apply the gradual-turn ceiling to maximum-strength tracking.
+        return error;
     }
     const auto pending=smoothing?smoother.pending():Angles{};
     const Angles remaining{error.pitch-pending.pitch,error.yaw-pending.yaw};

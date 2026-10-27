@@ -1,4 +1,4 @@
-# Adaptive Aim 0.9.1 — standalone LeviLauncher mod
+# Adaptive Aim 0.9.2 — standalone LeviLauncher mod
 
 **BedrockTools is no longer required, installed, loaded, fetched or queried.**
 This is a native Android ARM64 mod for LeviLaunchroid. It uses the launcher's
@@ -45,9 +45,9 @@ Open the launcher mod menu → **Auto Target Tracking**:
   using frame-gen's exponential reservoir approach.
 - **Camera smoothness**: 0–95, default 50.
 - **Base turn speed (below 100 strength)**: 5–90, default 70. The strength
-  curve boosts this baseline at higher settings. At 100, the controller uses a
-  fixed 720°/second angular ceiling instead (the native-input safety cap still
-  applies).
+  curve boosts this baseline at higher settings. At 100, the controller requests
+  the full angular correction each feedback update instead of applying a gradual
+  degrees-per-second limit. A finite calibrated native-input ceiling still applies.
 
 No auto-clicking, reach, packets, ESP or extra gameplay modules. The Mob category
 bit distinguishes mobs from items/projectiles. Players follow only the players
@@ -310,3 +310,24 @@ teleports, fast motion, blocked/out-of-range targets and invalid feedback still
 limit tracking. No extra HUD text or attack behaviour is added. Regression tests
 exercise narrow-cone retention against a competing mob, continuous strafing and
 jumping, player translation, physical-look disturbances and target removal.
+
+## 0.9.2 — full correction when passing through an enemy
+
+The user clarified that sticky selection was not the issue: passing through an
+enemy causes a near-180-degree reversal, and the camera took too long to catch up.
+Two old limits caused that behaviour at maximum strength: the 720-degree/second
+angular ceiling, and the default 10-native-input-unit cap after calibration.
+
+At **100 = AIM BOT!**, the controller now requests the complete shortest-angle
+correction toward the current torso/head point on each usable feedback update.
+It bypasses the gradual angular ceiling and allows a larger finite calibrated
+native-input limit (4096 units), so ordinary 180-degree reversals are not reduced
+to a series of tiny turns. Below 100, the previous smooth curve and 10-unit native
+cap remain unchanged. Calibration, pitch bounds, range/visibility/target filters,
+menu pausing, and the guard against piling corrections onto stale feedback stay.
+
+Regression tests require head and torso alignment after one deferred synthetic
+camera update while the player crosses through the enemy's X/Z position, with
+swapped, inverted and scaled native axes. This is not an Android latency guarantee:
+game/render interpolation, internal turn clamps, near-vertical pitch limits and
+the tick rate can still cause transient error. No zero-frame/perfect-lock claim.

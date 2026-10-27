@@ -124,3 +124,13 @@ path. Only the HUD draw submission and strength controller/menu are changed:
 10–100 integer slider, stronger response curve, 100 labeled AIM BOT! and using
 bounded strongest-lock tracking without smoothing/slowdown. No new signatures,
 layout constants, target types or gameplay modules are introduced.
+
+## Version 0.9.2 — pass-through turn latency at maximum strength
+
+User clarified the issue is slow camera reversal through an enemy, not switching
+enemies. Maximum strength now requests full angular correction and lifts the
+calibrated native-input ceiling from 10 to 4096 for that mode only. Lower-strength
+turn limits, SDK layouts and hooks are unchanged. New host regressions cross the
+enemy in both directions with head/torso targets and require alignment after a
+single deferred camera update. Actual Android large-turn response is unverified;
+small-probe calibration cannot prove perfectly linear response at every amplitude.

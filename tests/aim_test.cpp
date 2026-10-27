@@ -21,7 +21,10 @@ int main() {
     auto locked=strengthCorrection({15,20},.05f,100,5,true,true,95,strongest);
     assert(std::abs(locked.pitch-15)<.001f && std::abs(locked.yaw-20)<.001f);
     assert(magnitude(strongest.pending())==0);
-    assert(magnitude(strengthCorrection({100,100},.05f,100,70,true,true,50,strongest))<=36.001f);
+    auto reversal=strengthCorrection({-25,180},.01f,100,5,true,true,95,strongest);
+    assert(reversal.pitch==-25 && reversal.yaw==180); // No speed/time clipping.
+    auto smoothReversal=strengthCorrection({-25,180},.01f,90,5,true,true,95,strongest);
+    assert(magnitude(smoothReversal)<magnitude(reversal));
     assert(magnitude(strengthCorrection({15,20},.05f,0,70,true,true,50,strongest))==0);
     assert(magnitude(strengthCorrection({15,20},.3f,100,70,true,true,50,strongest))==0);
     auto air=[](int,int,int){return false;};
@@ -69,6 +72,11 @@ int main() {
             }
         }
         assert(calibration.ready());
+        auto fullTurn=calibration.encode({-25,180},4096.f); assert(fullTurn);
+        assert(std::abs(c0.pitch*fullTurn->first+c1.pitch*fullTurn->second+25)<.001f);
+        assert(std::abs(c0.yaw*fullTurn->first+c1.yaw*fullTurn->second-180)<.001f);
+        assert(!calibration.encode({1,1},INFINITY));
+        assert(!calibration.encode({1,1},0));
         auto command=calibration.encode({.3f,-.7f}); assert(command);
         assert(std::abs(c0.pitch*command->first+c1.pitch*command->second-.3f)<.001f);
         assert(std::abs(c0.yaw*command->first+c1.yaw*command->second+.7f)<.001f);

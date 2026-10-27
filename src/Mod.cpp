@@ -214,7 +214,7 @@ class AdaptiveAim {
         if(!awaitingRotation) {
             rotationBaseline={rot.x,rot.y}; firstRequest=now; awaitingRotation=true;
         }
-        const auto mapped=settings.autoCalibrate?calibration.encode(delta):
+        const auto mapped=settings.autoCalibrate?calibration.encode(delta,settings.strength>=100.f?4096.f:10.f):
             std::optional<aim::LookDelta>{aim::toLookDelta(delta,settings.yawFirst)};
         if(!mapped) { tickStatus="Camera response mapping unavailable"; resetTracking(); return; }
         sdk::Vec2 input{mapped->first,mapped->second};

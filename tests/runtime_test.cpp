@@ -191,6 +191,28 @@ int main() {
     auto lockedDesired=aim::towards({0,1.68f,0},{1,.63f,2});
     assert(lockedDesired);
     assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*lockedDesired))<1.f);
+    // Repro: physically pass through the enemy's X/Z position. The yaw flips
+    // across 180 degrees; require alignment after ONE deferred camera update,
+    // not a leisurely multi-tick rotation. This uses swapped/scaled native axes.
+    for(float pz:{1.5f,1.9f,2.1f,2.5f,3.4f}) {
+        local.bounds={{.7f,0,pz-.3f},{1.3f,1.8f,pz+.3f}};
+        tick();
+        fakehost::normalTick(local.ptr());
+        auto crossingGoal=aim::towards({1,1.68f,pz},{1,.63f,2}); assert(crossingGoal);
+        assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*crossingGoal))<.05f);
+    }
+    // Repeat with torso targeting and no competing actor during reacquisition.
+    fakehost::actors={chicken.ptr(),local.ptr()};
+    config(moduleId,"head","false"); config(moduleId,"fov","180");
+    for(int i=0;i<120;++i) tick();
+    for(float pz:{2.5f,2.1f,1.9f,1.5f}) {
+        local.bounds={{.7f,0,pz-.3f},{1.3f,1.8f,pz+.3f}};
+        tick(); fakehost::normalTick(local.ptr());
+        auto crossingGoal=aim::towards({1,1.68f,pz},{1,.385f,2}); assert(crossingGoal);
+        assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*crossingGoal))<.05f);
+    }
+    config(moduleId,"head","true");
+    for(int i=0;i<120;++i) tick();
     // Continuous enemy strafing/jumping, player translation and physical look.
     // Synthetic tick-rate tracking is checked, not a promise about render latency.
     for(int i=0;i<100;++i) {

@@ -41,15 +41,18 @@ public:
         phase=std::abs(det)>.5f*norms?Phase::Ready:Phase::Failed;
         return {};
     }
-    std::optional<LookDelta> encode(Angles desired) const {
-        if(!ready() || !std::isfinite(desired.pitch) || !std::isfinite(desired.yaw)) return {};
+    std::optional<LookDelta> encode(Angles desired,float nativeLimit=10.f) const {
+        if(!ready() || !std::isfinite(desired.pitch) || !std::isfinite(desired.yaw) ||
+           !std::isfinite(nativeLimit) || nativeLimit<=0 || nativeLimit>4096.f) return {};
         const float det=column0.pitch*column1.yaw-column1.pitch*column0.yaw;
         LookDelta input{(column1.yaw*desired.pitch-column1.pitch*desired.yaw)/det,
             (-column0.yaw*desired.pitch+column0.pitch*desired.yaw)/det};
         if(!std::isfinite(input.first) || !std::isfinite(input.second)) return {};
-        // Bound native input as well as the angular correction.
+        // Smooth assistance keeps the original 10-unit cap. Maximum tracking
+        // can request a full calibrated reversal, still with a finite ceiling.
         const float size=std::hypot(input.first,input.second);
-        if(size>10.f) { input.first*=10.f/size; input.second*=10.f/size; }
+        if(!std::isfinite(size)) return {};
+        if(size>nativeLimit) { input.first*=nativeLimit/size; input.second*=nativeLimit/size; }
         return input;
     }
 };
