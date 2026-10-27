@@ -32,7 +32,7 @@ public:
         };
         result={bounded(result.pitch,reservoir.pitch),bounded(result.yaw,reservoir.yaw)};
         const float length=magnitude(result);
-        const float limit=std::clamp(maxSpeed,0.f,120.f)*dt;
+        const float limit=std::clamp(maxSpeed,0.f,720.f)*dt;
         if(length>limit && length>0) {
             const float scale=limit/length; result.pitch*=scale; result.yaw*=scale;
         }

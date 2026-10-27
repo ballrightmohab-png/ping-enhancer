@@ -116,3 +116,11 @@ ray selects first-person actor rotation with bounded response calibration.
 Status identifies the feedback source. Regression tests cover all-zero pick-ray
 tracking and frozen fallback rotation; actual device camera/rotation agreement
 remains unverified. This supersedes 0.8.0's invalid-ray hard pause.
+
+## Version 0.9.0 — user-confirmed movement/alignment baseline
+
+The user reports 0.8.1 "works good". Preserve that runtime/layout/calibration
+path. Only the HUD draw submission and strength controller/menu are changed:
+10–100 integer slider, stronger response curve, 100 labeled AIM BOT! and using
+bounded strongest-lock tracking without smoothing/slowdown. No new signatures,
+layout constants, target types or gameplay modules are introduced.

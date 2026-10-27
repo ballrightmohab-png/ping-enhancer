@@ -49,7 +49,7 @@ int main() {
     config(moduleId,"fov","60");
     toggle(moduleId,true); // Minecraft deliberately not available yet.
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    { std::lock_guard lock(statusMutex); assert(lastStatus.find("Missing game functions")!=std::string::npos); }
+    { std::lock_guard lock(statusMutex); assert(lastStatus.empty()); }
     fakehost::gameReady=true;
     for(int n=0;n<200 && fakehost::hookCount()!=3;++n)
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -74,6 +74,8 @@ int main() {
     assert(fakehost::turns>0);
     assert(fakehost::lastDelta.x>0); // frame-gen pitch-first command.
     int before=fakehost::turns;
+    for(int i=0;i<3;++i) tick(); // Frozen feedback: never stack strongest-lock turns.
+    assert(fakehost::turns==before);
     assert(fakehost::queryMenu(true));
     tick(); assert(fakehost::turns==before);
     assert(!fakehost::queryMenu(false));
@@ -186,4 +188,5 @@ int main() {
     assert(mod.disable(context));
     assert(fakehost::hookCount()==0);
     assert(fakehost::originalTicks>0);
+    { std::lock_guard lock(statusMutex); assert(lastStatus.empty()); }
 }

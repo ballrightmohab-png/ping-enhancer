@@ -1,4 +1,4 @@
-# Adaptive Aim 0.8.1 — standalone LeviLauncher mod
+# Adaptive Aim 0.9.0 — standalone LeviLauncher mod
 
 **BedrockTools is no longer required, installed, loaded, fetched or queried.**
 This is a native Android ARM64 mod for LeviLaunchroid. It uses the launcher's
@@ -26,7 +26,11 @@ Open the launcher mod menu → **Auto Target Tracking**:
 - Master switch: disabled by default.
 - **Target players**: on by default.
 - **Target mobs**: off by default. Enable for chickens/other mobs.
-- **Aim strength (%)**: 0–100, default 50. Zero means no assist.
+- **Aim strength (100 = AIM BOT!)**: integer slider, 10–100, default 50.
+  10–90 progressively increases tracking speed/response and reduces smoothing
+  lag. 100 selects the strongest bounded lock and bypasses adaptive slowdown
+  and smoothing. The launcher still displays a numeric value; the control label
+  identifies 100 as **AIM BOT!**. Use the master switch to turn assistance off.
 - **Aim at head**: off = torso, on = head (bounding-box fractions, not skeletons).
 - **Adaptive slowdown**: slows near the aim point.
 - **Aim cone**: 1–180°, default 60, measured in both pitch and yaw.
@@ -40,7 +44,10 @@ Open the launcher mod menu → **Auto Target Tracking**:
 - **Frame-gen camera smoothing**: on by default; filters automatic corrections
   using frame-gen's exponential reservoir approach.
 - **Camera smoothness**: 0–95, default 50.
-- **Maximum turn**: 5–90°/second, default 70; strength scales the resulting turn.
+- **Base turn speed (below 100 strength)**: 5–90, default 70. The strength
+  curve boosts this baseline at higher settings. At 100, the controller uses a
+  fixed 720°/second angular ceiling instead (the native-input safety cap still
+  applies).
 
 No auto-clicking, reach, packets, ESP or extra gameplay modules. The Mob category
 bit distinguishes mobs from items/projectiles. Players follow only the players
@@ -266,3 +273,25 @@ than uncontrolled turning. Android alignment is still device-unverified; if
 actor rotation is not camera-aligned on this build, the fallback cannot promise
 centre-crosshair alignment. No automatic third-person/control-mode detection is
 implemented.
+
+## 0.9.0 — confirmed working baseline, clean HUD and stronger strength control
+
+The user confirmed 0.8.1 works well. This update keeps its target selection,
+ray/first-person fallback, calibration and native turn bridge intact.
+
+- Removed the top-left `Aim: ...` draw submission entirely, including startup,
+  calibration and error text. The background hook retry monitor still runs.
+- Strength is now an integer slider from 10 to 100, labeled
+  `Aim strength (100 = AIM BOT!)`. Intermediate values remain possible; the
+  legacy launcher slider does not provide custom per-value text or decade ticks.
+- 10–90 boosts both turn response and speed progressively and reduces smoothing
+  delay. 100 uses the current angular error directly, bounded to 720°/second,
+  bypassing adaptive slowdown and reservoir smoothing. It is strongest tracking,
+  not an unlimited teleport/snap: native input remains capped by calibration.
+- Range, aim cone, visibility, target switches, head/torso choice, pitch bounds,
+  idle tracking, calibration and stale-feedback safeguards remain in effect.
+  There is still no auto-attack.
+
+Tests verify monotonically increasing decade strengths, bounded maximum lock,
+zero-strength/stall handling, no residual smoothing at 100, no HUD text, and the
+existing view-ray and missing-ray first-person targeting regressions.

@@ -59,7 +59,7 @@ inline Angles step(Angles e, float dt, float response, float speed, bool adaptiv
     if (distance < 0.05f) return {};
     const float gain = adaptive ? std::clamp(distance/6.0f,0.25f,1.0f) : 1.0f;
     const float alpha = 1.0f-std::exp(-std::clamp(response,1.0f,20.0f)*gain*dt);
-    const float scale = std::min(alpha,std::clamp(speed,5.0f,120.0f)*dt/distance);
+    const float scale = std::min(alpha,std::clamp(speed,5.0f,720.0f)*dt/distance);
     return {e.pitch*scale,e.yaw*scale};
 }
 }

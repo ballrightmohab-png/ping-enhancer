@@ -2,10 +2,28 @@
 #include "Settings.hpp"
 #include "CameraSmoother.hpp"
 #include "LookCalibration.hpp"
+#include "Strength.hpp"
 #include <cassert>
 #include <limits>
 int main() {
     using namespace aim;
+    // Every displayed decade is stronger, and none overshoots the target.
+    float previous=0;
+    for(int strength=10;strength<=100;strength+=10) {
+        CameraSmoother smoother;
+        auto correction=strengthCorrection({15,20},.05f,float(strength),70,true,true,50,smoother);
+        assert(magnitude(correction)>previous);
+        assert(magnitude(correction)<=25.f);
+        previous=magnitude(correction);
+    }
+    CameraSmoother strongest;
+    strongest.advance({5,5},.05f,95,70); // No residual lag at 100.
+    auto locked=strengthCorrection({15,20},.05f,100,5,true,true,95,strongest);
+    assert(std::abs(locked.pitch-15)<.001f && std::abs(locked.yaw-20)<.001f);
+    assert(magnitude(strongest.pending())==0);
+    assert(magnitude(strengthCorrection({100,100},.05f,100,70,true,true,50,strongest))<=36.001f);
+    assert(magnitude(strengthCorrection({15,20},.05f,0,70,true,true,50,strongest))==0);
+    assert(magnitude(strengthCorrection({15,20},.3f,100,70,true,true,50,strongest))==0);
     auto air=[](int,int,int){return false;};
     assert(clearVoxels({0,1.68f,0},{-1,.385f,3},air));
     assert(clearVoxels({0,1.68f,0},{1,.385f,3},air));

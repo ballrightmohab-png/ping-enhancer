@@ -2,6 +2,7 @@
 #include "Settings.hpp"
 #include "CameraSmoother.hpp"
 #include "LookCalibration.hpp"
+#include "Strength.hpp"
 #include "game/Runtime.hpp"
 #include <pl/Mod.hpp>
 #include <pl/ModMenu.hpp>
@@ -49,33 +50,11 @@ class AdaptiveAim {
         targetToken=0; awaitingRotation=false; firstRequest={}; cameraSmoother.reset(); calibration.cancelPending();
     }
 
-    void report(const std::string& text) {
-        pl::modmenu::DrawCommand command{};
-        command.type=pl::modmenu::DrawCommandType::Text;
-        command.x=16; command.y=90; command.size=16;
-        command.color=0xFFFFFFFF;
-        command.text="Aim: "+text;
-        pl::modmenu::submitDrawCommands(moduleId, std::span(&command,1));
-    }
     void startMonitor() {
         stopping=false;
         monitor=std::thread([this] {
             while(!stopping.load()) {
                 attachRuntime();
-                std::string message;
-                { std::lock_guard lock(mutex);
-                    message=runtimeStatus;
-                    if(attached) {
-                        if(!settings.enabled) message="OFF - enable Adaptive Aim";
-                        else if(lastTick==Clock::time_point{} || Clock::now()-lastTick>std::chrono::seconds(3))
-                            message="Hooks installed, but NO world ticks (check game version)";
-                        else {
-                            message=tickStatus;
-                            if(feedbackSource) message+=feedbackSource==1?" [view ray]":" [first-person rotation fallback]";
-                        }
-                    }
-                }
-                report(message);
                 std::unique_lock lock(monitorMutex);
                 wakeMonitor.wait_for(lock,std::chrono::milliseconds(500),[this]{return stopping.load();});
             }
@@ -210,20 +189,21 @@ class AdaptiveAim {
                 "Calibrating view axes - keep camera still briefly";
             return;
         }
-        // Subtract unreleased correction so a closed-loop tracker does not keep
-        // accumulating the same camera error into the smoothing reservoir.
-        const auto pending=settings.cameraSmoothing?cameraSmoother.pending():aim::Angles{};
-        aim::Angles remaining{best.pitch-pending.pitch,best.yaw-pending.yaw};
-        auto delta=aim::step(remaining,dt,10.f,settings.speed,settings.adaptive);
-        const float strength=settings.strength/100.f;
-        delta.pitch*=strength;
-        delta.yaw*=strength;
-        if(settings.cameraSmoothing)
-            delta=cameraSmoother.advance(delta,dt,settings.smoothness,settings.speed*strength);
+        auto delta=aim::strengthCorrection(best,dt,settings.strength,settings.speed,
+            settings.adaptive,settings.cameraSmoothing,settings.smoothness,cameraSmoother);
         delta.pitch=std::clamp(rot.x+delta.pitch,-89.9f,89.9f)-rot.x;
         if(aim::magnitude(best)<.05f) {
             tickStatus="Auto tracking: aligned (no input needed)";
             awaitingRotation=false; cameraSmoother.reset();
+            return;
+        }
+        // Strongest lock must not stack full corrections against stale feedback.
+        // Wait for the previous command to produce a view update before another.
+        if(settings.strength>=100.f && awaitingRotation && !rotationChanged) {
+            if(now-firstRequest>std::chrono::milliseconds(500)) {
+                trackingFault=true; resetTracking();
+                tickStatus="Tracking paused: view did not respond; toggle off/on";
+            }
             return;
         }
         if(!awaitingRotation) {
@@ -290,7 +270,7 @@ public:
             .onConfigChanged([this](auto,auto key,auto value){config(key,value);})
             .config("players","Target players",ConfigType::Toggle,"true")
             .config("mobs","Target mobs",ConfigType::Toggle,"false")
-            .config("strength","Aim strength (%)",ConfigType::SliderFloat,"50","0","100")
+            .config("strength","Aim strength (100 = AIM BOT!)",ConfigType::SliderInt,"50","10","100")
             .config("head","Aim at head (off = torso)",ConfigType::Toggle,"false")
             .config("adaptive","Adaptive slowdown",ConfigType::Toggle,"true")
             .config("fov","Aim cone (degrees)",ConfigType::SliderFloat,"60","1","180")
@@ -299,11 +279,11 @@ public:
             .config("cameraSmoothing","Frame-gen camera smoothing",ConfigType::Toggle,"true")
             .config("smoothness","Camera smoothness",ConfigType::SliderFloat,"50","0","95")
             .config("yawFirst","Camera input: yaw first (advanced)",ConfigType::Toggle,"false")
-            .config("speed","Maximum turn (degrees/sec)",ConfigType::SliderFloat,"70","5","90")
+            .config("speed","Base turn speed (below 100 strength)",ConfigType::SliderFloat,"70","5","90")
             .registerModule();
         if(!registered) return false;
         if(!attachRuntime()) {
-            context.logger().warn("Adaptive Aim controls are available; Minecraft signatures/hooks are not ready. No other mod is required. See the live status.");
+            context.logger().warn("Adaptive Aim controls are available; Minecraft signatures/hooks are not ready. No other mod is required.");
         }
         startMonitor();
         return true;

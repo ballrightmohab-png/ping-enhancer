@@ -7,7 +7,7 @@ std::optional<pl::modmenu::ModuleInfo> registeredMenu;
 }
 namespace pl::modmenu {
 bool registerModule(const ModuleInfo& info) { registeredMenu=info; return true; }
-void submitDrawCommands(std::string_view, std::span<const DrawCommand>) {}
+void submitDrawCommands(std::string_view, std::span<const DrawCommand> commands) { assert(commands.empty()); }
 void unregisterModule(std::string_view) { registeredMenu.reset(); }
 }
 #include "FakeHost.hpp"
@@ -32,8 +32,9 @@ int main() {
     assert(find("yawFirst").defaultValue=="false");
     assert(find("players").type==Type::Toggle);
     assert(find("mobs").type==Type::Toggle);
-    assert(find("strength").type==Type::SliderFloat);
-    assert(find("strength").minValue=="0");
+    assert(find("strength").type==Type::SliderInt);
+    assert(find("strength").displayName.find("100 = AIM BOT!")!=std::string::npos);
+    assert(find("strength").minValue=="10");
     assert(find("strength").maxValue=="100");
     assert(find("players").defaultValue=="true");
     assert(find("mobs").defaultValue=="false");
