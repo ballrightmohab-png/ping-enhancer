@@ -179,6 +179,39 @@ int main() {
     const float hitY=1.68f-std::sin(pitch)*3.f/dz;
     assert(hitX>=chicken.bounds.min.x && hitX<=chicken.bounds.max.x);
     assert(hitY>=chicken.bounds.min.y && hitY<=chicken.bounds.max.y);
+    // Maximum strength retains the SAME enemy outside the acquisition cone,
+    // even when a rival is exactly where the crosshair used to point.
+    config(moduleId,"fov","5");
+    otherPlayer.bounds={{9,0,9},{9.4f,.7f,9.4f}};
+    fakehost::actors={chicken.ptr(),otherPlayer.ptr(),local.ptr()};
+    for(int i=0;i<120;++i) tick(); // Acquire/calibrate the aligned chicken.
+    otherPlayer.bounds=chicken.bounds;
+    chicken.bounds={{.8f,0,1.8f},{1.2f,.7f,2.2f}};
+    for(int i=0;i<60;++i) tick();
+    auto lockedDesired=aim::towards({0,1.68f,0},{1,.63f,2});
+    assert(lockedDesired);
+    assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*lockedDesired))<1.f);
+    // Continuous enemy strafing/jumping, player translation and physical look.
+    // Synthetic tick-rate tracking is checked, not a promise about render latency.
+    for(int i=0;i<100;++i) {
+        const float x=std::cos(i*.04f), jump=.2f*std::sin(i*.06f);
+        chicken.bounds={{x-.2f,jump,1.8f},{x+.2f,jump+.7f,2.2f}};
+        const float px=.25f*std::sin(i*.03f);
+        local.bounds={{px-.3f,0,-.3f},{px+.3f,1.8f,.3f}};
+        if(i%20==0) fakehost::physicalLook(local.ptr(),{.4f,-.4f});
+        tick();
+        auto goal=aim::towards({px,1.68f,0},{x,jump+.63f,2}); assert(goal);
+        // Flush the deferred command once without an extra targeting tick.
+        fakehost::normalTick(local.ptr());
+        assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*goal))<1.f);
+    }
+    // Removal releases the token safely. The rival can then be reacquired only
+    // when it satisfies the normal acquisition cone.
+    fakehost::actors={otherPlayer.ptr(),local.ptr()};
+    otherPlayer.bounds={{9,0,9},{9.4f,.7f,9.4f}};
+    before=fakehost::turns;
+    for(int i=0;i<5;++i) tick();
+    assert(fakehost::turns==before);
     // The master switch prevents new requests even while idle tracking is active.
     toggle(moduleId,false);
     before=fakehost::turns;

@@ -1,4 +1,4 @@
-# Adaptive Aim 0.9.0 — standalone LeviLauncher mod
+# Adaptive Aim 0.9.1 — standalone LeviLauncher mod
 
 **BedrockTools is no longer required, installed, loaded, fetched or queried.**
 This is a native Android ARM64 mod for LeviLaunchroid. It uses the launcher's
@@ -295,3 +295,18 @@ ray/first-person fallback, calibration and native turn bridge intact.
 Tests verify monotonically increasing decade strengths, bounded maximum lock,
 zero-strength/stall handling, no residual smoothing at 100, no HUD text, and the
 existing view-ray and missing-ray first-person targeting regressions.
+
+## 0.9.1 — sticky enemy retention at AIM BOT! strength
+
+At 100, the aim cone is used to acquire an enemy. Once acquired, the same enemy
+keeps priority even if movement takes it outside that cone or another entity
+moves closer to the crosshair. Range, visibility, target-type and dimension
+checks still apply; a removed/invalid target is released, not dereferenced later.
+Strengths below 100 retain the previous selection behaviour.
+
+The target point and player's eye are recomputed each game tick, including during
+physical look input. This is not a promise of zero rendered error: camera latency,
+teleports, fast motion, blocked/out-of-range targets and invalid feedback still
+limit tracking. No extra HUD text or attack behaviour is added. Regression tests
+exercise narrow-cone retention against a competing mob, continuous strafing and
+jumping, player translation, physical-look disturbances and target removal.

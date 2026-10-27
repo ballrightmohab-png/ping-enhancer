@@ -158,11 +158,16 @@ class AdaptiveAim {
             if(!target) continue;
             auto error=aim::error({rot.x,rot.y},*target);
             float angle=aim::magnitude(error);
-            if(angle>=settings.fov) continue;
-            ++inCone;
             const auto token=reinterpret_cast<std::uintptr_t>(raw);
-            // Prefer a still-valid tracked entity over similarly aligned neighbours.
-            const float selectionScore=angle+(targetToken && token!=targetToken?2.f:0.f);
+            const bool hardLocked=settings.strength>=100.f && targetToken && token==targetToken;
+            // At 100 the cone controls acquisition, not retention. Revalidate
+            // the locked actor from this tick's list, range and visibility; never
+            // dereference an old pointer or switch just because a rival is nearer
+            // the crosshair while our enemy (or the player) moves.
+            if(!hardLocked && angle>=settings.fov) continue;
+            ++inCone;
+            const float selectionScore=hardLocked?-1.f:
+                angle+(targetToken && token!=targetToken?2.f:0.f);
             if(selectionScore>=score) continue;
             if(!visible(dimension->blockSource(),eye,point)) { ++blocked; continue; }
             score=selectionScore; best=error; bestToken=token; found=true;
