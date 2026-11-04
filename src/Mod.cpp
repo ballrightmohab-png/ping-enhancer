@@ -3,6 +3,7 @@
 #include "CameraSmoother.hpp"
 #include "LookCalibration.hpp"
 #include "Strength.hpp"
+#include "MenuControls.hpp"
 #include "game/Runtime.hpp"
 #include <pl/Mod.hpp>
 #include <pl/ModMenu.hpp>
@@ -39,6 +40,8 @@ class AdaptiveAim {
     Clock::time_point lastTick{};
     bool attached=false;
     bool trackingFault=false;
+    bool preferActorFeedback=false, limitedTurns=false, sentLargeTurn=false;
+    std::string lastGameplayStatus="Waiting for world ticks";
     int feedbackSource=0; // 1: game pick ray; 2: first-person actor rotation.
     // Identity tokens are compared only against the freshly enumerated actor list.
     // No cached target pointer is dereferenced on a later tick.
@@ -50,11 +53,45 @@ class AdaptiveAim {
         targetToken=0; awaitingRotation=false; firstRequest={}; cameraSmoother.reset(); calibration.cancelPending();
     }
 
+    void recoverUnresponsiveView() {
+        if(feedbackSource==1) {
+            preferActorFeedback=true;
+            const auto locked=targetToken;
+            resetTracking(); calibration.reset(); feedbackSource=2;
+            if(settings.strength>=100.f) targetToken=locked;
+            tickStatus="View ray did not respond; retrying first-person rotation";
+        } else if(sentLargeTurn && !limitedTurns) {
+            limitedTurns=true;
+            awaitingRotation=false; firstRequest={}; cameraSmoother.reset();
+            tickStatus="Large turn did not respond; retrying small camera commands";
+        } else {
+            trackingFault=true; resetTracking();
+            tickStatus="Camera feedback stopped; use Retry camera calibration";
+        }
+    }
+    std::string diagnosticSchema() {
+        std::lock_guard lock(mutex);
+        std::string message;
+        if(!settings.enabled) message="OFF - enable Auto Target Tracking";
+        else if(!attached) message=runtimeStatus;
+        else if(lastTick==Clock::time_point{} || Clock::now()-lastTick>std::chrono::seconds(3))
+            message="Hooks installed but no world ticks; check installed game version";
+        else message=uiBlocked?lastGameplayStatus:tickStatus;
+        if(feedbackSource) message+=feedbackSource==1?" [view ray]":" [first-person rotation]";
+        if(limitedTurns) message+=" [small-command recovery]";
+        message+=". Build 0.9.3; target versions: MC 1.26.51 / LeviLauncher 1.5.27; installed versions not detected.";
+        return aim::menuSchema(settings,message);
+    }
     void startMonitor() {
         stopping=false;
         monitor=std::thread([this] {
+            std::string previousSchema;
             while(!stopping.load()) {
                 attachRuntime();
+                const auto schema=diagnosticSchema();
+                if(schema!=previousSchema) {
+                    if(pl::modmenu::setConfigSchemaJson(moduleId,schema)) previousSchema=schema;
+                }
                 std::unique_lock lock(monitorMutex);
                 wakeMonitor.wait_for(lock,std::chrono::milliseconds(500),[this]{return stopping.load();});
             }
@@ -97,7 +134,8 @@ class AdaptiveAim {
             tickStatus="Invalid world/player components - check game version"; resetTracking(); return;
         }
         if(worldToken!=reinterpret_cast<std::uintptr_t>(level)) {
-            resetTracking(); calibration.reset(); feedbackSource=0; worldToken=reinterpret_cast<std::uintptr_t>(level);
+            resetTracking(); calibration.reset(); feedbackSource=0;
+            preferActorFeedback=false; limitedTurns=false; sentLargeTurn=false; worldToken=reinterpret_cast<std::uintptr_t>(level);
         }
         const auto box=player->bounds();
         const auto ray=level->viewRay();
@@ -113,7 +151,7 @@ class AdaptiveAim {
         int source=1;
         // Keep the fallback until a reset, rather than mixing two feedback
         // frames when an intermittently populated pick result appears/disappears.
-        if(validRay && feedbackSource!=2) view=aim::towards({0,0,0},direction);
+        if(validRay && !preferActorFeedback) view=aim::towards({0,0,0},direction);
         if(!view) {
             // Some Android layouts/control paths do not expose a usable pick ray.
             // In first person, use the existing actor rotation component instead;
@@ -124,6 +162,7 @@ class AdaptiveAim {
                !std::isfinite(rotation.y) || std::abs(rotation.x)>90.f) {
                 tickStatus="No usable view ray or first-person rotation"; resetTracking(); return;
             }
+            preferActorFeedback=true;
             eye=bodyEye;
             view=aim::Angles{rotation.x,std::remainder(rotation.y,360.f)};
             source=2;
@@ -190,8 +229,11 @@ class AdaptiveAim {
             cameraSmoother.reset();
             const auto probe=calibration.update(*view,std::chrono::duration<double>(now.time_since_epoch()).count(),manualLook);
             if(probe) runtime.sendAutomaticTurn(player,{probe->first,probe->second});
-            tickStatus=calibration.failed()?"Calibration failed - toggle off/on; keep camera still briefly":
-                "Calibrating view axes - keep camera still briefly";
+            if(calibration.failed() && feedbackSource==1) {
+                recoverUnresponsiveView(); return;
+            }
+            tickStatus=calibration.failed()?"Calibration failed; use Retry camera calibration while holding look still":
+                "Calibrating camera - hold look still briefly";
             return;
         }
         auto delta=aim::strengthCorrection(best,dt,settings.strength,settings.speed,
@@ -206,30 +248,38 @@ class AdaptiveAim {
         // Wait for the previous command to produce a view update before another.
         if(settings.strength>=100.f && awaitingRotation && !rotationChanged) {
             if(now-firstRequest>std::chrono::milliseconds(500)) {
-                trackingFault=true; resetTracking();
-                tickStatus="Tracking paused: view did not respond; toggle off/on";
+                recoverUnresponsiveView();
             }
             return;
         }
         if(!awaitingRotation) {
             rotationBaseline={rot.x,rot.y}; firstRequest=now; awaitingRotation=true;
         }
-        const auto mapped=settings.autoCalibrate?calibration.encode(delta,settings.strength>=100.f?4096.f:10.f):
+        const auto mapped=settings.autoCalibrate?calibration.encode(delta,settings.strength>=100.f && !limitedTurns?4096.f:10.f):
             std::optional<aim::LookDelta>{aim::toLookDelta(delta,settings.yawFirst)};
         if(!mapped) { tickStatus="Camera response mapping unavailable"; resetTracking(); return; }
         sdk::Vec2 input{mapped->first,mapped->second};
+        if(limitedTurns) {
+            const float size=std::hypot(input.x,input.y);
+            if(size>10.f) { input.x*=10.f/size; input.y*=10.f/size; }
+        }
+        sentLargeTurn=std::hypot(input.x,input.y)>10.001f;
         if(!runtime.sendAutomaticTurn(player,input)) {
             tickStatus="Automatic camera callback unavailable"; resetTracking(); return;
         }
         if(rotationChanged) tickStatus="Crosshair tracking: view ray updated";
         else if(now-firstRequest>std::chrono::milliseconds(500)) {
-            tickStatus="Tracking paused: view did not respond; toggle off/on";
-            trackingFault=true; resetTracking();
+            recoverUnresponsiveView();
         }
         else tickStatus="Auto tracking: waiting for later camera update";
     }
     void config(std::string_view key,std::string_view value) {
         std::lock_guard lock(mutex);
+        if(key=="retry") {
+            resetTracking(); calibration.reset(); trackingFault=false; feedbackSource=0;
+            tickStatus="Retry requested; close menu and hold look still briefly";
+            lastGameplayStatus=tickStatus; return;
+        }
         if(settings.update(key,value)) { resetTracking(); calibration.reset(); trackingFault=false; feedbackSource=0; }
     }
     bool attachRuntime() {
@@ -249,7 +299,9 @@ class AdaptiveAim {
         invisible=runtime.function<Check>(Id::ActorIsInvisible);
         solid=runtime.function<Solid>(Id::BlockSourceIsSolidBlockingBlock);
         bool installed=runtime.install([this](auto* player){tick(player);},[this](bool blocked){
-            std::lock_guard lock(mutex); uiBlocked=blocked;
+            std::lock_guard lock(mutex);
+            if(blocked && !uiBlocked) lastGameplayStatus=tickStatus;
+            uiBlocked=blocked;
             if(blocked) { resetTracking(); calibration.reset(); feedbackSource=0; }
         },status);
         { std::lock_guard lock(mutex); attached=installed; runtimeStatus=status; }
@@ -263,29 +315,21 @@ public:
         // Register controls before scanning/hooking Minecraft.
         // Unsupported game versions must not make the controls disappear.
         using namespace pl::modmenu;
-        bool registered=ModuleBuilder(moduleId,"Auto Target Tracking")
+        auto builder=ModuleBuilder(moduleId,"Auto Target Tracking")
             .modId(context.id()).description("Automatic head/torso tracking, even without mouse or touch movement. No auto-attack.")
             .defaultEnabled(false).hideInHudEditor()
             .onToggle([this](auto,bool enabled){
                 { std::lock_guard lock(mutex); settings.enabled=enabled; last={}; resetTracking(); calibration.reset(); trackingFault=false; feedbackSource=0;
+                  preferActorFeedback=false; limitedTurns=false; sentLargeTurn=false;
                   lastManualSequence=runtime.physicalLookSequence(); }
                 // Retry when toggled on; late game startup is handled by the monitor.
                 if(enabled) attachRuntime();
             })
-            .onConfigChanged([this](auto,auto key,auto value){config(key,value);})
-            .config("players","Target players",ConfigType::Toggle,"true")
-            .config("mobs","Target mobs",ConfigType::Toggle,"false")
-            .config("strength","Aim strength (100 = AIM BOT!)",ConfigType::SliderInt,"50","10","100")
-            .config("head","Aim at head (off = torso)",ConfigType::Toggle,"false")
-            .config("adaptive","Adaptive slowdown",ConfigType::Toggle,"true")
-            .config("fov","Aim cone (degrees)",ConfigType::SliderFloat,"60","1","180")
-            .config("range","Range (blocks)",ConfigType::SliderFloat,"4","1","6")
-            .config("autoCalibrate","Auto-calibrate camera axes",ConfigType::Toggle,"true")
-            .config("cameraSmoothing","Frame-gen camera smoothing",ConfigType::Toggle,"true")
-            .config("smoothness","Camera smoothness",ConfigType::SliderFloat,"50","0","95")
-            .config("yawFirst","Camera input: yaw first (advanced)",ConfigType::Toggle,"false")
-            .config("speed","Base turn speed (below 100 strength)",ConfigType::SliderFloat,"70","5","90")
-            .registerModule();
+            .onConfigChanged([this](auto,auto key,auto value){config(key,value);});
+        for(const auto& control:aim::menuControls())
+            builder.config(control.key,control.displayName,control.type,control.defaultValue,
+                           control.minValue,control.maxValue,control.dependsOn);
+        bool registered=builder.registerModule();
         if(!registered) return false;
         if(!attachRuntime()) {
             context.logger().warn("Adaptive Aim controls are available; Minecraft signatures/hooks are not ready. No other mod is required.");
@@ -300,6 +344,8 @@ public:
         pl::modmenu::unregisterModule(moduleId);
         std::lock_guard lock(mutex);
         settings=aim::Settings{}; last={}; lastTick={}; attached=false; uiBlocked=false; lastResolve={}; worldToken=0; resetTracking(); calibration.reset(); trackingFault=false; feedbackSource=0;
+        preferActorFeedback=false; limitedTurns=false; sentLargeTurn=false;
+        lastGameplayStatus="Waiting for world ticks";
         return true;
     }
     bool unload(pl::mod::ModContext& context) { return disable(context); }

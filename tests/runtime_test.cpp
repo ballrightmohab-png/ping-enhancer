@@ -8,10 +8,16 @@
 #include "FakeHost.hpp"
 namespace {
 std::optional<pl::modmenu::ModuleInfo> registeredMenu;
-std::string lastStatus;
+std::string lastStatus, menuStatus;
 std::mutex statusMutex;
 }
 namespace pl::modmenu {
+bool setConfigSchemaJson(std::string_view,std::string_view schema) {
+    assert(schema.find("Tracking status (menu only)")!=std::string_view::npos);
+    assert(schema.find("Target mobs")!=std::string_view::npos);
+    std::lock_guard lock(statusMutex); menuStatus=schema;
+    return true;
+}
 bool registerModule(const ModuleInfo& info) { registeredMenu=info; return true; }
 void unregisterModule(std::string_view) { registeredMenu.reset(); }
 void submitDrawCommands(std::string_view,std::span<const DrawCommand> commands) {
@@ -50,6 +56,9 @@ int main() {
     toggle(moduleId,true); // Minecraft deliberately not available yet.
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     { std::lock_guard lock(statusMutex); assert(lastStatus.empty()); }
+    // The monitor refreshes diagnostics every 500ms, without overlay draws.
+    std::this_thread::sleep_for(std::chrono::milliseconds(550));
+    { std::lock_guard lock(statusMutex); assert(menuStatus.find("Missing game functions")!=std::string::npos); }
     fakehost::gameReady=true;
     for(int n=0;n<200 && fakehost::hookCount()!=3;++n)
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -234,6 +243,30 @@ int main() {
     before=fakehost::turns;
     for(int i=0;i<5;++i) tick();
     assert(fakehost::turns==before);
+    // A finite, plausible but FROZEN pick ray used to fail calibration forever.
+    // It must switch feedback to the live first-person rotation automatically.
+    local.bounds={{-.3f,0,-.3f},{.3f,1.8f,.3f}};
+    chicken.bounds={{.8f,0,1.8f},{1.2f,.7f,2.2f}};
+    fakehost::actors={chicken.ptr(),local.ptr()};
+    fakehost::cameraPose={}; local.rotation={}; fakehost::pendingCamera={};
+    sdk::ViewRay frozenRay{{0,1.68f,0},{0,0,1}};
+    std::memcpy(level.data()+sdk::offsets::Level::mHitResultWrapper,&frozenRay,sizeof(frozenRay));
+    toggle(moduleId,false); toggle(moduleId,true);
+    for(int i=0;i<230;++i) tick();
+    auto recoveryGoal=aim::towards({0,1.68f,0},{1,.63f,2}); assert(recoveryGoal);
+    assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*recoveryGoal))<.05f);
+    // A native handler rejecting large turns must recover with smaller commands,
+    // not latch tracking OFF forever. Retain the target even through a reversal.
+    fakehost::rejectLargeTurns=true;
+    chicken.bounds={{-1.2f,0,-2.2f},{-.8f,.7f,-1.8f}};
+    for(int i=0;i<150;++i) tick();
+    auto reverseGoal=aim::towards({0,1.68f,0},{-1,.63f,-2}); assert(reverseGoal);
+    assert(fakehost::rejectedTurns==1); // One bounded retry transition, not spam.
+    assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*reverseGoal))<.05f);
+    fakehost::rejectLargeTurns=false;
+    config(moduleId,"retry","true"); // Menu-only retry without changing toggles.
+    for(int i=0;i<100;++i) tick();
+    assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*reverseGoal))<.05f);
     // The master switch prevents new requests even while idle tracking is active.
     toggle(moduleId,false);
     before=fakehost::turns;

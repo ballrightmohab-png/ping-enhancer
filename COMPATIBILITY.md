@@ -134,3 +134,14 @@ turn limits, SDK layouts and hooks are unchanged. New host regressions cross the
 enemy in both directions with head/torso targets and require alignment after a
 single deferred camera update. Actual Android large-turn response is unverified;
 small-probe calibration cannot prove perfectly linear response at every amplitude.
+
+## Version 0.9.3 — device reports no movement; installed versions unknown
+
+No device root cause has been established. This build adds bounded recovery from
+stale-but-finite ray feedback and ignored large native turn requests, plus an
+in-menu Info status and retry button using the pinned SDK's V2 config schema API.
+There is still no gameplay HUD overlay. Host regressions reproduce both failure
+paths and confirm recovery under the declared synthetic camera model. Signature
+and layout assumptions remain unchanged and version-specific; an unknown game
+update must not be represented as supported. Check menu diagnostics and actual
+installed version numbers if the new build still cannot aim.

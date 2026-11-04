@@ -1,4 +1,4 @@
-# Adaptive Aim 0.9.2 — standalone LeviLauncher mod
+# Adaptive Aim 0.9.3 — standalone LeviLauncher mod
 
 **BedrockTools is no longer required, installed, loaded, fetched or queried.**
 This is a native Android ARM64 mod for LeviLaunchroid. It uses the launcher's
@@ -331,3 +331,33 @@ camera update while the player crosses through the enemy's X/Z position, with
 swapped, inverted and scaled native axes. This is not an Android latency guarantee:
 game/render interpolation, internal turn clamps, near-vertical pitch limits and
 the tick rate can still cause transient error. No zero-frame/perfect-lock claim.
+
+## 0.9.3 — recover silent no-movement failures; menu-only diagnostics
+
+User reports no camera movement and is unsure of the currently installed game /
+launcher versions. The exact device cause is not established. This revision fixes
+two reproducible controller failure paths and makes remaining blockers visible
+without restoring the unwanted HUD text:
+
+- A valid-looking but stale pick ray used to fail calibration permanently. It
+  now switches once to first-person rotation feedback and recalibrates. That
+  fallback stays selected across ordinary menu/config changes in the same world.
+- If a full-strength large native command produces no feedback, retry once using
+  smaller commands instead of immediately latching a permanent pause. The same
+  enemy remains selected through the retry. An unresponsive small-command path
+  still pauses; there is no endless probe/turn loop.
+- **Tracking status (menu only)** shows hook/signature failures, no world ticks,
+  calibration problems, target filters, feedback source and conservative recovery.
+  Opening the menu preserves the last gameplay status rather than replacing the
+  useful reason with "menu open". All existing controls keep their keys/values.
+- **Retry camera calibration** clears a paused/failed calibration without changing
+  target switches. Close the menu and hold look still briefly after pressing it.
+  It preserves a known-bad-ray fallback and an active small-command recovery.
+
+Tests simulate frozen-but-plausible rays and native handlers rejecting large
+turns, and verify recovery to actual synthetic camera alignment. They also check
+that missing-hook diagnostics are published to the menu and no HUD text returns.
+**This does not add support for an unknown/newer Minecraft binary.** The intended
+versions remain Minecraft 1.26.51 / LeviLauncher 1.5.27; the mod does not detect
+installed versions. If movement still fails, report the menu's full tracking
+status and check the version numbers in the game and launcher themselves.

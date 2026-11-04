@@ -6,6 +6,11 @@ namespace {
 std::optional<pl::modmenu::ModuleInfo> registeredMenu;
 }
 namespace pl::modmenu {
+bool setConfigSchemaJson(std::string_view,std::string_view schema) {
+    assert(schema.find("Tracking status (menu only)")!=std::string_view::npos);
+    assert(schema.find("Target mobs")!=std::string_view::npos);
+    return true;
+}
 bool registerModule(const ModuleInfo& info) { registeredMenu=info; return true; }
 void submitDrawCommands(std::string_view, std::span<const DrawCommand> commands) { assert(commands.empty()); }
 void unregisterModule(std::string_view) { registeredMenu.reset(); }
@@ -13,6 +18,14 @@ void unregisterModule(std::string_view) { registeredMenu.reset(); }
 #include "FakeHost.hpp"
 #include "../src/Mod.cpp"
 int main() {
+    aim::Settings values;
+    values.strength=75; values.mobs=true;
+    assert(aim::settingValue(values,"strength")=="75");
+    assert(aim::settingValue(values,"mobs")=="true");
+    const auto schema=aim::menuSchema(values,"Missing game functions: test\"name");
+    assert(schema.find("retry")!=std::string::npos);
+    assert(schema.find("Missing game functions")!=std::string::npos);
+    assert(schema.find("test\\\"name")!=std::string::npos); // JSON escapes diagnostic text.
     pl::mod::ModContext context;
     auto& mod=AdaptiveAim::instance();
     // No Minecraft loaded: missing signatures must NOT hide controls.

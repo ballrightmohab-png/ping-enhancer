@@ -18,6 +18,8 @@ inline std::atomic<bool> menuAvailable{true};
 inline bool menuQuery(void*) { return showingMenu; }
 inline game::Vec2 lastDelta{}, pendingCamera{};
 inline bool integrateCamera=false;
+inline bool rejectLargeTurns=false;
+inline int rejectedTurns=0;
 inline std::vector<void*> actors;
 struct Hook { void* detour; };
 inline std::mutex mutex;
@@ -52,6 +54,7 @@ inline bool invisible(void*) { return false; }
 inline bool solid(void*,const game::BlockPos&) { return blocked; }
 inline void turn(void*,game::Vec2* delta) {
     ++turns; lastDelta=*delta;
+    if(rejectLargeTurns && std::hypot(delta->x,delta->y)>10.001f) { ++rejectedTurns; return; }
     if(integrateCamera) { pendingCamera.x+=delta->x; pendingCamera.y+=delta->y; }
 }
 inline void* address(game::Signature id) {
