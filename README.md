@@ -1,4 +1,4 @@
-# Adaptive Aim 0.9.3 — standalone LeviLauncher mod
+# Adaptive Aim 0.10.0 — standalone LeviLauncher mod
 
 **BedrockTools is no longer required, installed, loaded, fetched or queried.**
 This is a native Android ARM64 mod for LeviLaunchroid. It uses the launcher's
@@ -13,8 +13,11 @@ package, and restart Minecraft through LeviLauncher. You can disable/uninstall
 BedrockTools; this mod does not call it. GitHub sign-in may be required for artifacts.
 
 **Compatibility is version-specific.** The current bundled layout constants and
-byte patterns originate from a source snapshot whose manifest declares Minecraft
-`1.26.5X.X`. This is not a promise of support for all game versions. Missing
+byte patterns now target **Minecraft 1.26.60.X only**, based on upstream's explicit
+1.26.60 port. Use a 1.26.60-compatible LeviLauncher (latest checked release: v1.6.0).
+This build is not backward-compatible with 1.26.51 and does not auto-detect layouts.
+The package declares `minecraft_versions: ["1.26.60.X"]` for compatible launchers.
+This is not a promise of support for all game versions. Missing
 signatures prevent hook installation; matching signatures alone do not guarantee
 matching layouts. Actual Android gameplay must still be verified on-device.
 No undetectability or ban-safety claim. Use only where assistance is permitted.
@@ -361,3 +364,31 @@ that missing-hook diagnostics are published to the menu and no HUD text returns.
 versions remain Minecraft 1.26.51 / LeviLauncher 1.5.27; the mod does not detect
 installed versions. If movement still fails, report the menu's full tracking
 status and check the version numbers in the game and launcher themselves.
+
+## 0.10.0 — actual Minecraft 1.26.60 compatibility port
+
+The user reports that assistance worked before the Minecraft 1.26.60 update.
+Upstream comparison now confirms concrete compatibility changes, rather than just
+controller/calibration failure hypotheses:
+
+- Actor level/dimension/category, AABB-component access and rotation-component
+  offsets moved. The rotation component is now @0x238 (previously @0x218).
+- Level actor manager moved to 0x478. The hit-result wrapper is now a **pointer**
+  stored at 0x1D0, not an inline structure at 456. Null pointers yield no ray and
+  use the established first-person fallback.
+- Updated `ActorIsPlayer`, `ActorIsInvisible`, and solid-block signatures from
+  upstream's 1.26.60 profile. The tick, actor-list and turn signatures are unchanged.
+- Menu-state resolution now uses the launcher's explicit 1.26.60 signature,
+  not the old ClientInstance RTTI slot 151. Missing signatures still block hooks.
+
+Pinned source URLs, offsets and patterns are recorded in
+`docs/MC_1.26.60_PROFILE.json`. BedrockTools remains neither a build nor runtime
+dependency. The pinned host SDK API remains unchanged; game signature/layout
+updates are separate from host plugin API changes.
+
+New literal-offset fixtures check actor reads and pointer-backed/null hit results;
+profile tests check all patterns and menu resolution. Existing idle tracking,
+head/torso, pass-through, smoothing, calibration and recovery tests use the new
+layout. Android compilation and host tests do not prove live device compatibility;
+this port still needs an in-game test on 1.26.60. Strength controls and the clean
+HUD are retained. Use an older artifact if staying on Minecraft 1.26.51.

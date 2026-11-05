@@ -1,6 +1,23 @@
-# Compatibility investigation: Minecraft 1.26.51 / LeviLauncher 1.5.27
+# Compatibility investigation
 
-## Verified
+## Current build: 0.10.0 targets Minecraft 1.26.60.X
+
+User reports that the mod worked before the 1.26.60 update. Comparison against
+BedrockTools' explicit 26.60 port and launcher's revision-5 rules confirms three
+changed game signatures, moved actor/level fields, a pointer-backed hit-result
+wrapper, and direct menu-query signature in place of slot 151. The port updates
+all of these, not merely aim strength or recovery logic. A 1.26.60-compatible
+launcher is required (latest release checked: v1.6.0). The SDK API pin is unchanged.
+
+Exact source snapshots and profile: `docs/MC_1.26.60_PROFILE.json`.
+New tests use literal 1.26.60 offsets and indirect/null wrapper pointers and check
+the complete pinned signature profile. All existing tracking tests are retained.
+No game ELF/device was available; **live Android compatibility remains unverified**.
+Do not use this build on 1.26.51: there is no runtime dual-layout detection.
+
+## Historical investigation: 1.26.51 / launcher 1.5.27
+
+### Verified
 
 - LeviLaunchroid release tag `v1.5.27` points to commit
   `a8531393d3a336812748a9bb45582a3d9791af7b`.

@@ -14,13 +14,16 @@ def package(library, output):
     if len(header) < 20 or header[:5] != b'\x7fELF\x02' or header[5] != 1 or int.from_bytes(header[18:20], 'little') != 183:
         raise ValueError('Expected a little-endian ARM64 ELF shared library')
     manifest = dict(type='preload-native', name='Adaptive Aim', author='ping-enhancer contributors',
-                    description='Standalone aim-assist mod. No other gameplay mod required.',
-                    version='0.9.3', entry='libAdaptiveAim.so')
+                    description='Standalone aim assist for Minecraft 1.26.60. No other gameplay mod required.',
+                    version='0.10.0', minecraft_versions=['1.26.60.X'], entry='libAdaptiveAim.so')
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     with ZipFile(output, 'w', ZIP_DEFLATED) as archive:
         archive.writestr('manifest.json', json.dumps(manifest, indent=2)+'\n')
         archive.write(library, 'libAdaptiveAim.so')
+        root = Path(__file__).resolve().parents[1]
+        for notice in ('LICENSE', 'licenses/LeviLauncher-APACHE-2.0.txt'):
+            archive.write(root / notice, notice)
 
 
 if __name__ == '__main__':

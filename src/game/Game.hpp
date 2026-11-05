@@ -1,4 +1,4 @@
-// Layout constants adapted from BedrockTools, MIT; see THIRD_PARTY_NOTICES.md.
+// MC 1.26.60 only. Layout constants adapted from BedrockTools, MIT; see THIRD_PARTY_NOTICES.md.
 #pragma once
 #include <cstddef>
 #include <cstdint>
@@ -11,15 +11,15 @@ struct BlockPos { int x,y,z; };
 namespace offsets {
 namespace Actor {
 inline constexpr std::size_t mEntityContext = 0x8;
-inline constexpr std::size_t mEntityData = 0x120;
-inline constexpr std::size_t mStateVectorComponent = 0x208;
-inline constexpr std::size_t mActorRotationComponent = 0x218;
-inline constexpr std::size_t mLevel = 464;
-inline constexpr std::size_t mDimension = 448;
-inline constexpr std::size_t mHurtTime = 0x194;
-inline constexpr std::size_t mCategories = 512;
-inline constexpr std::size_t mNameTagHash = 384;
-inline constexpr std::size_t mFilteredNameTag = 712;
+inline constexpr std::size_t mEntityData = 0x140;
+inline constexpr std::size_t mStateVectorComponent = 0x228;
+inline constexpr std::size_t mActorRotationComponent = 0x238;
+inline constexpr std::size_t mLevel = 0x1F0;
+inline constexpr std::size_t mDimension = 0x1E0;
+inline constexpr std::size_t mHurtTime = 0x1B4;
+inline constexpr std::size_t mCategories = 0x220;
+inline constexpr std::size_t mNameTagHash = 0x1A0;
+inline constexpr std::size_t mFilteredNameTag = 0x2E0;
 }
 namespace BuiltInActorComponents {
 inline constexpr std::size_t mAABBShapeComponent = 8;
@@ -32,8 +32,8 @@ inline constexpr std::size_t mBlockSource = 208;
 inline constexpr std::size_t mWeather = 0x1B8;
 }
 namespace Level {
-inline constexpr std::size_t mActorManager = 0x470;
-inline constexpr std::size_t mHitResultWrapper = 456;
+inline constexpr std::size_t mActorManager = 0x478;
+inline constexpr std::size_t mHitResultWrapper = 0x1D0;
 }
 }
 template<class T> const T& field(const void* object,std::size_t offset) {
@@ -48,10 +48,10 @@ class Level {
 public:
     void* actorManager() const { return field<void*>(this,offsets::Level::mActorManager); }
     ViewRay viewRay() const {
-        // HitResult: mStartPos @0, mRayDir @12, embedded wrapper @456.
-        // Same wrapper as the SDK hit-result readers; Vec3 field order checked
-        // against the public HitResult declaration. Version-specific on Android.
-        const auto* hit=reinterpret_cast<const unsigned char*>(this)+offsets::Level::mHitResultWrapper;
+        // MC 1.26.60: Level stores a POINTER to HitResultWrapper at 0x1D0,
+        // not an inline HitResult. The wrapper's HitResult member remains @0.
+        const auto* hit=field<const void*>(this,offsets::Level::mHitResultWrapper);
+        if(!hit) return {};
         return {field<Vec3>(hit,0),field<Vec3>(hit,12)};
     }
 };

@@ -35,5 +35,6 @@ class PackageTests(unittest.TestCase):
             with ZipFile(output) as archive:
                 manifest = json.loads(archive.read('manifest.json'))
                 self.assertEqual(manifest['type'], 'preload-native')
+                self.assertEqual(manifest['minecraft_versions'], ['1.26.60.X'])
                 self.assertIn(manifest['entry'], archive.namelist())
                 self.assertEqual(archive.read(manifest['entry']), header)

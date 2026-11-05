@@ -3,7 +3,6 @@
 #include "Signatures.hpp"
 #include <pl/memory/Signature.hpp>
 #include <pl/memory/Hook.hpp>
-#include <pl/memory/Vtable.hpp>
 #include <array>
 #include <cmath>
 #include <atomic>
@@ -21,8 +20,6 @@ class Runtime {
     inline static Runtime* active=nullptr;
     std::array<std::uintptr_t,patterns.size()> addresses{};
     std::uintptr_t menuAddress=0;
-    // Same RTTI/slot rule used by LeviLauncher v1.5.27 for MC >= 1.26.50.
-    static constexpr unsigned menuSlot=151;
     std::array<pl::memory::HookHandle,3> hooks;
     Tick originalTick=nullptr;
     Menu originalMenu=nullptr;
@@ -64,6 +61,7 @@ public:
         std::vector<std::string> pending;
         for(unsigned i=0;i<patterns.size();++i)
             if(!addresses[i]) pending.emplace_back(patterns[i].bytes);
+        if(!menuAddress) pending.emplace_back(menuPattern);
         auto results=pl::memory::resolveSignatures(pending,"libminecraftpe.so");
         status="Missing game functions:";
         bool complete=true;
@@ -74,9 +72,11 @@ public:
             }
             if(!addresses[i]) { status+=' '; status+=patterns[i].name; complete=false; }
         }
-        if(!menuAddress)
-            menuAddress=pl::memory::resolveVtableFunction("14ClientInstance",menuSlot,"libminecraftpe.so");
-        if(!menuAddress) { status+=" ClientInstance::isShowingMenu (RTTI slot 151)"; complete=false; }
+        if(!menuAddress) {
+            auto it=results.find(std::string(menuPattern));
+            if(it!=results.end()) menuAddress=it->second;
+        }
+        if(!menuAddress) { status+=" ClientInstance::isShowingMenu (1.26.60 signature)"; complete=false; }
         if(complete) status="Game functions resolved (launcher menu-state path)";
         return complete;
     }

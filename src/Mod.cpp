@@ -79,7 +79,7 @@ class AdaptiveAim {
         else message=uiBlocked?lastGameplayStatus:tickStatus;
         if(feedbackSource) message+=feedbackSource==1?" [view ray]":" [first-person rotation]";
         if(limitedTurns) message+=" [small-command recovery]";
-        message+=". Build 0.9.3; target versions: MC 1.26.51 / LeviLauncher 1.5.27; installed versions not detected.";
+        message+=". Build 0.10.0; target: MC 1.26.60 with a 1.26.60-compatible LeviLauncher; installed versions not detected.";
         return aim::menuSchema(settings,message);
     }
     void startMonitor() {

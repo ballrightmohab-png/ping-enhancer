@@ -43,8 +43,8 @@ inline void normalTick(void* local) {
             constexpr float rad=3.14159265358979323846f/180.f;
             const float pitch=cameraPose.x*rad, yaw=cameraPose.y*rad;
             game::ViewRay ray{{0,1.68f,0},{-std::sin(yaw)*std::cos(pitch),-std::sin(pitch),std::cos(yaw)*std::cos(pitch)}};
-            auto* hit=reinterpret_cast<unsigned char*>(actor->level())+game::offsets::Level::mHitResultWrapper;
-            std::memcpy(hit,&ray,sizeof(ray));
+            auto* hit=game::field<void*>(actor->level(),game::offsets::Level::mHitResultWrapper);
+            if(hit) std::memcpy(hit,&ray,sizeof(ray));
         }
     }
 }
@@ -93,15 +93,13 @@ inline bool queryMenu(bool showing) {
 }
 }
 namespace pl::memory {
-std::uintptr_t resolveVtableFunction(std::string_view type,std::size_t slot,std::string_view module) {
-    assert(type=="14ClientInstance" && slot==151 && module=="libminecraftpe.so");
-    return fakehost::gameReady && fakehost::menuAvailable
-        ?reinterpret_cast<std::uintptr_t>(&fakehost::menuQuery):0;
-}
 std::unordered_map<std::string,std::uintptr_t> resolveSignatures(std::span<const std::string> requests,std::string_view module) {
     assert(module=="libminecraftpe.so");
     std::unordered_map<std::string,std::uintptr_t> results;
     if(!fakehost::gameReady) return results;
+    for(const auto& request:requests)
+        if(request==game::menuPattern && fakehost::menuAvailable)
+            results.emplace(request,reinterpret_cast<std::uintptr_t>(&fakehost::menuQuery));
     for(auto& request:requests) for(unsigned i=0;i<game::patterns.size();++i) {
         if(static_cast<int>(i)!=fakehost::missing && request==game::patterns[i].bytes)
             results.emplace(request,reinterpret_cast<std::uintptr_t>(fakehost::address(static_cast<game::Signature>(i))));

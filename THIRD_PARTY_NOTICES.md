@@ -3,7 +3,8 @@
 The version-specific Minecraft byte patterns and layout constants in
 `src/game/Signatures.hpp` and `src/game/Game.hpp` are adapted from
 [QYCottage/BedrockTools](https://github.com/QYCottage/BedrockTools), revision
-`b0ed3e9a0e5cb598dc5c93f22e5f159de80d5d95`.
+`81176f287453b68c131a34f78b198355675bd7b6` for the 1.26.60 port
+(previous profile: `b0ed3e9a0e5cb598dc5c93f22e5f159de80d5d95`).
 The MIT notice in LICENSE is preserved from that revision (copyright RadiantByte).
 Its README says GPL-3.0, inconsistent with its LICENSE file at that revision.
 
@@ -30,3 +31,12 @@ LeviLamina HitResult declaration (not a new runtime dependency):
 https://github.com/LiteLDev/LeviLamina/blob/4ca13569fc0d1cdeb873cf6e7c48ddcc7a74e59c/src/mc/world/phys/HitResult.h
 No generated LeviLamina implementation is vendored here; Android layout validation
 is still required.
+
+## Minecraft 1.26.60 menu resolution
+
+The direct menu-query signature follows LeviLaunchroid signature-rule revision 5,
+commit `97cb7d3d3b26dda044450a9cb0ea1e5dc133edd4`:
+https://github.com/LiteLDev/LeviLaunchroid/blob/97cb7d3d3b26dda044450a9cb0ea1e5dc133edd4/resources/preloader/preloader_signature_rules_source.json
+It replaces the previous RTTI-slot approach. That project is Apache-2.0 licensed;
+a copy is in `licenses/LeviLauncher-APACHE-2.0.txt`. No launcher implementation is
+vendored. Source/profile provenance is also recorded in `docs/MC_1.26.60_PROFILE.json`.

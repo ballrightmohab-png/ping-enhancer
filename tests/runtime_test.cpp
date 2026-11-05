@@ -64,6 +64,10 @@ int main() {
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     assert(fakehost::hookCount()==3); // Automatic game hook installation.
     alignas(16) std::array<unsigned char,4096> dimension{}, level{};
+    alignas(16) std::array<unsigned char,128> hitResult{};
+    auto* hitPtr=hitResult.data();
+    // Real 1.26.60 uses an indirect hit-result wrapper, not inline bytes.
+    std::memcpy(level.data()+sdk::offsets::Level::mHitResultWrapper,&hitPtr,sizeof(hitPtr));
     int region=0, manager=0;
     auto* regionPtr=&region; auto* managerPtr=&manager;
     std::memcpy(dimension.data()+sdk::offsets::Dimension::mBlockSource,&regionPtr,sizeof(regionPtr));
@@ -163,7 +167,7 @@ int main() {
     // Regression: missing pick-ray data no longer blocks first-person tracking.
     fakehost::publishView=false;
     sdk::ViewRay emptyRay{};
-    std::memcpy(level.data()+sdk::offsets::Level::mHitResultWrapper,&emptyRay,sizeof(emptyRay));
+    std::memcpy(hitResult.data(),&emptyRay,sizeof(emptyRay));
     local.rotation=fakehost::cameraPose;
     // A frozen fallback must fail calibration after one bounded probe, not spin.
     before=fakehost::turns;
@@ -250,7 +254,7 @@ int main() {
     fakehost::actors={chicken.ptr(),local.ptr()};
     fakehost::cameraPose={}; local.rotation={}; fakehost::pendingCamera={};
     sdk::ViewRay frozenRay{{0,1.68f,0},{0,0,1}};
-    std::memcpy(level.data()+sdk::offsets::Level::mHitResultWrapper,&frozenRay,sizeof(frozenRay));
+    std::memcpy(hitResult.data(),&frozenRay,sizeof(frozenRay));
     toggle(moduleId,false); toggle(moduleId,true);
     for(int i=0;i<230;++i) tick();
     auto recoveryGoal=aim::towards({0,1.68f,0},{1,.63f,2}); assert(recoveryGoal);
