@@ -15,7 +15,7 @@ def package(library, output):
         raise ValueError('Expected a little-endian ARM64 ELF shared library')
     manifest = dict(type='preload-native', name='Adaptive Aim', author='ping-enhancer contributors',
                     description='Standalone aim assist for Minecraft 1.26.60. No other gameplay mod required.',
-                    version='0.10.0', minecraft_versions=['1.26.60.X'], entry='libAdaptiveAim.so')
+                    version='0.10.1', minecraft_versions=['1.26.60.X'], entry='libAdaptiveAim.so')
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     with ZipFile(output, 'w', ZIP_DEFLATED) as archive:

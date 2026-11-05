@@ -1,4 +1,4 @@
-# Adaptive Aim 0.10.0 — standalone LeviLauncher mod
+# Adaptive Aim 0.10.1 — standalone LeviLauncher mod
 
 **BedrockTools is no longer required, installed, loaded, fetched or queried.**
 This is a native Android ARM64 mod for LeviLaunchroid. It uses the launcher's
@@ -38,6 +38,9 @@ Open the launcher mod menu → **Auto Target Tracking**:
 - **Adaptive slowdown**: slows near the aim point.
 - **Aim cone**: 1–180°, default 60, measured in both pitch and yaw.
 - **Range**: 1–6 blocks, default 4.
+- **Use pick-ray feedback (advanced)**: OFF by default. Normal first-person
+  tracking uses player rotation, not a touch cursor ray. Only enable this for
+  comparison/debugging if rotation feedback is unsuitable.
 - **Auto-calibrate camera axes**: on by default. Two small isolated probes learn
   axis order, sign and gain from changes in the active view feedback. Keep the camera
   still briefly during calibration. Missing/unstable response pauses calibration.
@@ -392,3 +395,28 @@ head/torso, pass-through, smoothing, calibration and recovery tests use the new
 layout. Android compilation and host tests do not prove live device compatibility;
 this port still needs an in-game test on 1.26.60. Strength controls and the clean
 HUD are retained. Use an older artifact if staying on Minecraft 1.26.51.
+
+## 0.10.1 — aim above head: avoid offset touch-pick feedback
+
+The user reports the crosshair sits above the enemy/mob. The exact device source
+has not been captured, so this revision addresses two plausible, reproducible
+vertical-bias paths rather than claiming a confirmed on-device diagnosis:
+
+- Normal mode now uses first-person rotation feedback by default, not the stored
+  pick-ray direction. A touch cursor ray can respond to camera movement and pass
+  calibration while still being offset from the visible centre crosshair. Relative
+  axis calibration alone cannot remove that absolute directional bias.
+- Pick-ray feedback is an explicit **advanced**, default-OFF toggle. Its origin
+  must be within 0.35 blocks of the estimated player eye (previously 3 blocks).
+  A ray originating near the player's feet can no longer be used as the eye
+  position to compute a target angle and then aim over an entity.
+
+Torso/head points remain unchanged and inside the bounding box; this is not an
+arbitrary downward pixel/angle adjustment. Tests introduce a responsive 12-degree
+pick-direction bias and check the independent actual camera ray hits torso/head
+points for chicken/adult-sized bounds at multiple distances. Another regression
+checks foot-origin ray rejection in advanced mode. Tests model first-person
+camera/body rotation agreement; actual rendered Android alignment remains to be
+verified. Use first-person controls, not third-person, and leave pick-ray feedback
+OFF for the initial device test. Other targeting, calibration and clean-HUD
+behaviour stays unchanged. This build still targets Minecraft 1.26.60 only.

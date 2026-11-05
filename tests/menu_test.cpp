@@ -39,6 +39,7 @@ int main() {
         std::abort();
     };
     using Type=pl::modmenu::ConfigType;
+    assert(find("pickRayFeedback").defaultValue=="false");
     assert(find("autoCalibrate").type==Type::Toggle);
     assert(find("cameraSmoothing").type==Type::Toggle);
     assert(find("smoothness").type==Type::SliderFloat);

@@ -13,6 +13,7 @@ inline std::vector<pl::modmenu::ConfigEntry> menuControls() {
         {"adaptive","Adaptive slowdown",Type::Toggle,"true","","",""},
         {"fov","Aim cone (degrees)",Type::SliderFloat,"60","1","180",""},
         {"range","Range (blocks)",Type::SliderFloat,"4","1","6",""},
+        {"pickRayFeedback","Use pick-ray feedback (advanced)",Type::Toggle,"false","","",""},
         {"autoCalibrate","Auto-calibrate camera axes",Type::Toggle,"true","","",""},
         {"cameraSmoothing","Frame-gen camera smoothing",Type::Toggle,"true","","",""},
         {"smoothness","Camera smoothness",Type::SliderFloat,"50","0","95",""},
@@ -25,6 +26,7 @@ inline std::string settingValue(const Settings& s,std::string_view key) {
     if(key=="mobs") return s.mobs?"true":"false";
     if(key=="head") return s.head?"true":"false";
     if(key=="adaptive") return s.adaptive?"true":"false";
+    if(key=="pickRayFeedback") return s.pickRayFeedback?"true":"false";
     if(key=="autoCalibrate") return s.autoCalibrate?"true":"false";
     if(key=="cameraSmoothing") return s.cameraSmoothing?"true":"false";
     if(key=="yawFirst") return s.yawFirst?"true":"false";

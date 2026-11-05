@@ -79,7 +79,7 @@ class AdaptiveAim {
         else message=uiBlocked?lastGameplayStatus:tickStatus;
         if(feedbackSource) message+=feedbackSource==1?" [view ray]":" [first-person rotation]";
         if(limitedTurns) message+=" [small-command recovery]";
-        message+=". Build 0.10.0; target: MC 1.26.60 with a 1.26.60-compatible LeviLauncher; installed versions not detected.";
+        message+=". Build 0.10.1; target: MC 1.26.60 with a 1.26.60-compatible LeviLauncher; installed versions not detected.";
         return aim::menuSchema(settings,message);
     }
     void startMonitor() {
@@ -138,7 +138,7 @@ class AdaptiveAim {
             preferActorFeedback=false; limitedTurns=false; sentLargeTurn=false; worldToken=reinterpret_cast<std::uintptr_t>(level);
         }
         const auto box=player->bounds();
-        const auto ray=level->viewRay();
+        const auto ray=settings.pickRayFeedback?level->viewRay():sdk::ViewRay{};
         aim::Vec3 eye{ray.origin.x,ray.origin.y,ray.origin.z};
         const aim::Vec3 direction{ray.direction.x,ray.direction.y,ray.direction.z};
         const aim::Vec3 bodyEye{(box.min.x+box.max.x)*.5f,box.max.y-.12f,(box.min.z+box.max.z)*.5f};
@@ -146,15 +146,16 @@ class AdaptiveAim {
         const float originDistance=std::hypot(std::hypot(eye.x-bodyEye.x,eye.z-bodyEye.z),eye.y-bodyEye.y);
         const bool validRay=aim::finite(eye) && aim::finite(direction) && aim::finite(bodyEye) &&
             std::isfinite(rayLength) && rayLength>=.01f && rayLength<=512.f &&
-            std::isfinite(originDistance) && originDistance<=3.f;
+            std::isfinite(originDistance) && originDistance<=.35f;
         std::optional<aim::Angles> view;
         int source=1;
         // Keep the fallback until a reset, rather than mixing two feedback
         // frames when an intermittently populated pick result appears/disappears.
-        if(validRay && !preferActorFeedback) view=aim::towards({0,0,0},direction);
+        if(settings.pickRayFeedback && validRay && !preferActorFeedback) view=aim::towards({0,0,0},direction);
         if(!view) {
-            // Some Android layouts/control paths do not expose a usable pick ray.
-            // In first person, use the existing actor rotation component instead;
+            // Default centre-crosshair mode uses first-person rotation. Touch
+            // picking may have a responsive but offset cursor ray; it is opt-in.
+            // If an advanced pick ray is invalid, use rotation as a fallback;
             // measured turn response is still mandatory by default. Never invent
             // a direction from zero/invalid ray bytes or reinterpret cursor data.
             const auto rotation=player->rotation();
@@ -280,7 +281,10 @@ class AdaptiveAim {
             tickStatus="Retry requested; close menu and hold look still briefly";
             lastGameplayStatus=tickStatus; return;
         }
-        if(settings.update(key,value)) { resetTracking(); calibration.reset(); trackingFault=false; feedbackSource=0; }
+        if(settings.update(key,value)) {
+            if(key=="pickRayFeedback") preferActorFeedback=false;
+            resetTracking(); calibration.reset(); trackingFault=false; feedbackSource=0;
+        }
     }
     bool attachRuntime() {
         std::lock_guard runtimeLock(runtimeMutex);

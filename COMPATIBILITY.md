@@ -1,6 +1,6 @@
 # Compatibility investigation
 
-## Current build: 0.10.0 targets Minecraft 1.26.60.X
+## Current build: 0.10.1 targets Minecraft 1.26.60.X
 
 User reports that the mod worked before the 1.26.60 update. Comparison against
 BedrockTools' explicit 26.60 port and launcher's revision-5 rules confirms three
@@ -162,3 +162,14 @@ paths and confirm recovery under the declared synthetic camera model. Signature
 and layout assumptions remain unchanged and version-specific; an unknown game
 update must not be represented as supported. Check menu diagnostics and actual
 installed version numbers if the new build still cannot aim.
+
+## Version 0.10.1 — reported vertical offset above targets
+
+Default feedback changes to first-person player rotation to avoid assuming a
+responsive touch pick ray equals the centre-screen crosshair. Pick-ray feedback
+is now an advanced opt-in; its eye-origin tolerance tightens from 3 to 0.35
+blocks. Direction-biased pick rays and foot-origin rays are tested independently
+of actual synthetic camera pose. The user's real feedback source/absolute camera
+bias is not yet measured: this is a targeted fix for reproduced bias paths, not a
+guarantee of rendered Android alignment. Minecraft layouts/signatures stay at the
+0.10.0 1.26.60 profile; SDK pin and package version constraint are unchanged.

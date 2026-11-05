@@ -26,6 +26,7 @@ inline std::mutex mutex;
 inline std::map<void*,Hook> hooks;
 inline bool publishView=false, freezeBody=false;
 inline game::Vec2 cameraPose{};
+inline float pickPitchBias=0, pickOriginYOffset=0;
 // Input response columns in the (pitch,yaw) view basis. Tests can invert/swap them.
 inline game::Vec2 response0{1,0}, response1{0,1};
 inline void normalTick(void* local) {
@@ -41,8 +42,8 @@ inline void normalTick(void* local) {
         pendingCamera={};
         if(publishView && actor->level()) {
             constexpr float rad=3.14159265358979323846f/180.f;
-            const float pitch=cameraPose.x*rad, yaw=cameraPose.y*rad;
-            game::ViewRay ray{{0,1.68f,0},{-std::sin(yaw)*std::cos(pitch),-std::sin(pitch),std::cos(yaw)*std::cos(pitch)}};
+            const float pitch=(cameraPose.x+pickPitchBias)*rad, yaw=cameraPose.y*rad;
+            game::ViewRay ray{{0,1.68f+pickOriginYOffset,0},{-std::sin(yaw)*std::cos(pitch),-std::sin(pitch),std::cos(yaw)*std::cos(pitch)}};
             auto* hit=game::field<void*>(actor->level(),game::offsets::Level::mHitResultWrapper);
             if(hit) std::memcpy(hit,&ray,sizeof(ray));
         }

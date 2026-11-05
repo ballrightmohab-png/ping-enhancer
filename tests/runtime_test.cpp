@@ -48,6 +48,7 @@ int main() {
     assert(mod.enable(context));
     auto config=registeredMenu->onConfigChanged;
     auto toggle=registeredMenu->onToggle;
+    config(moduleId,"pickRayFeedback","true"); // Explicitly test the advanced path too.
     config(moduleId,"autoCalibrate","false");
     config(moduleId,"players","false");
     config(moduleId,"mobs","true");
@@ -271,6 +272,33 @@ int main() {
     config(moduleId,"retry","true"); // Menu-only retry without changing toggles.
     for(int i=0;i<100;++i) tick();
     assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*reverseGoal))<.05f);
+    // Repro: a responsive touch pick ray points ABOVE/BESIDE the real camera
+    // ray. Default first-person feedback must not align that cursor instead.
+    config(moduleId,"pickRayFeedback","false");
+    fakehost::publishView=true; fakehost::pickPitchBias=12;
+    fakehost::actors={chicken.ptr(),local.ptr()};
+    local.bounds={{-.3f,0,-.3f},{.3f,1.8f,.3f}};
+    for(float height:{.7f,1.8f}) for(float distance:{2.f,3.5f}) for(bool head:{false,true}) {
+        chicken.bounds={{-.2f,0,distance-.2f},{.2f,height,distance+.2f}};
+        config(moduleId,"head",head?"true":"false");
+        for(int i=0;i<100;++i) tick();
+        const float targetY=height*(head?.9f:.55f);
+        auto goal=aim::towards({0,1.68f,0},{0,targetY,distance}); assert(goal);
+        assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*goal))<.05f);
+        constexpr float radians=3.14159265358979323846f/180.f;
+        // Intersect the ACTUAL camera ray with the entity's centre plane.
+        const float cameraHitY=1.68f-std::tan(fakehost::cameraPose.x*radians)*distance;
+        assert(cameraHitY>chicken.bounds.min.y && cameraHitY<chicken.bounds.max.y);
+        assert(std::abs(cameraHitY-targetY)<.01f);
+    }
+    // Even advanced ray mode must reject a foot-origin ray that previously
+    // passed the very loose three-block eye check and produced vertical bias.
+    fakehost::pickPitchBias=0; fakehost::pickOriginYOffset=-1.68f;
+    config(moduleId,"pickRayFeedback","true");
+    for(int i=0;i<120;++i) tick();
+    auto eyeGoal=aim::towards({0,1.68f,0},{0,1.62f,3.5f}); assert(eyeGoal);
+    assert(aim::magnitude(aim::error({fakehost::cameraPose.x,fakehost::cameraPose.y},*eyeGoal))<.05f);
+    fakehost::pickPitchBias=0; fakehost::pickOriginYOffset=0;
     // The master switch prevents new requests even while idle tracking is active.
     toggle(moduleId,false);
     before=fakehost::turns;
