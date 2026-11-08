@@ -1,4 +1,4 @@
-# Adaptive Aim 0.10.1 — standalone LeviLauncher mod
+# Adaptive Aim 0.10.2 — standalone LeviLauncher mod
 
 **BedrockTools is no longer required, installed, loaded, fetched or queried.**
 This is a native Android ARM64 mod for LeviLaunchroid. It uses the launcher's
@@ -31,8 +31,8 @@ Open the launcher mod menu → **Auto Target Tracking**:
 - **Target mobs**: off by default. Enable for chickens/other mobs.
 - **Aim strength (100 = AIM BOT!)**: integer slider, 10–100, default 50.
   10–90 progressively increases tracking speed/response and reduces smoothing
-  lag. 100 selects the strongest bounded lock and bypasses adaptive slowdown
-  and smoothing. The launcher still displays a numeric value; the control label
+  lag. 100 keeps full response for large turns, with gentle settling inside
+  2 degrees to reduce shaking near alignment. The launcher still displays a numeric value; the control label
   identifies 100 as **AIM BOT!**. Use the master switch to turn assistance off.
 - **Aim at head**: off = torso, on = head (bounding-box fractions, not skeletons).
 - **Adaptive slowdown**: slows near the aim point.
@@ -420,3 +420,20 @@ camera/body rotation agreement; actual rendered Android alignment remains to be
 verified. Use first-person controls, not third-person, and leave pick-ray feedback
 OFF for the initial device test. Other targeting, calibration and clean-HUD
 behaviour stays unchanged. This build still targets Minecraft 1.26.60 only.
+
+## 0.10.2 — quieter near-target settling
+
+User requested less camera shake. The controller now ignores angular errors below
+0.12 degrees and clears pending smoothing there, so tiny alternating feedback
+noise does not trigger constant reversals. At strength 100, errors below 2 degrees
+receive a gently blended, tick-aware correction instead of an immediate full
+snap. At/above 2 degrees, response remains full: passing through an enemy still
+requests a fast large-angle reversal. There is no new global turn-speed limit.
+
+Regression tests cover alternating pitch noise, settling with a 25% response-gain
+mismatch, bounded near-target correction, and unchanged large-turn behaviour.
+Camera-alignment assertions allow the intentional sub-0.12-degree resting error;
+actual synthetic camera rays must still intersect head/torso points inside target
+bounds. Existing MC 1.26.60 layouts, first-person feedback default, strength slider,
+menu-only diagnostics and no-HUD behaviour remain unchanged. Device shake still
+needs checking in-game; this does not remove Minecraft's own camera bobbing.

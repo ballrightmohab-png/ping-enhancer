@@ -27,6 +27,22 @@ int main() {
     assert(magnitude(smoothReversal)<magnitude(reversal));
     assert(magnitude(strengthCorrection({15,20},.05f,0,70,true,true,50,strongest))==0);
     assert(magnitude(strengthCorrection({15,20},.3f,100,70,true,true,50,strongest))==0);
+    // Tiny alternating feedback noise must not cause back-and-forth turns.
+    for(int strength:{10,50,90,100}) for(int i=0;i<100;++i) {
+        auto tiny=strengthCorrection({i%2?.08f:-.08f,.02f},.05f,float(strength),70,true,true,50,strongest);
+        assert(magnitude(tiny)==0);
+        assert(magnitude(strongest.pending())==0);
+    }
+    auto near=strengthCorrection({.3f,0},.05f,100,70,true,true,50,strongest);
+    assert(near.pitch>0 && near.pitch<.3f);
+    // Slight calibration gain mismatch settles without repeated sign reversals.
+    float residual=.5f;
+    for(int i=0;i<30;++i) {
+        auto command=strengthCorrection({residual,0},.05f,100,70,true,true,50,strongest);
+        residual-=command.pitch*1.25f;
+        assert(residual>=0);
+    }
+    assert(residual<.12f);
     auto air=[](int,int,int){return false;};
     assert(clearVoxels({0,1.68f,0},{-1,.385f,3},air));
     assert(clearVoxels({0,1.68f,0},{1,.385f,3},air));

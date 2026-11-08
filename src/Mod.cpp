@@ -79,7 +79,7 @@ class AdaptiveAim {
         else message=uiBlocked?lastGameplayStatus:tickStatus;
         if(feedbackSource) message+=feedbackSource==1?" [view ray]":" [first-person rotation]";
         if(limitedTurns) message+=" [small-command recovery]";
-        message+=". Build 0.10.1; target: MC 1.26.60 with a 1.26.60-compatible LeviLauncher; installed versions not detected.";
+        message+=". Build 0.10.2; target: MC 1.26.60 with a 1.26.60-compatible LeviLauncher; installed versions not detected.";
         return aim::menuSchema(settings,message);
     }
     void startMonitor() {
@@ -240,7 +240,7 @@ class AdaptiveAim {
         auto delta=aim::strengthCorrection(best,dt,settings.strength,settings.speed,
             settings.adaptive,settings.cameraSmoothing,settings.smoothness,cameraSmoother);
         delta.pitch=std::clamp(rot.x+delta.pitch,-89.9f,89.9f)-rot.x;
-        if(aim::magnitude(best)<.05f) {
+        if(aim::magnitude(best)<.12f) {
             tickStatus="Auto tracking: aligned (no input needed)";
             awaitingRotation=false; cameraSmoother.reset();
             return;

@@ -1,6 +1,6 @@
 # Compatibility investigation
 
-## Current build: 0.10.1 targets Minecraft 1.26.60.X
+## Current build: 0.10.2 targets Minecraft 1.26.60.X
 
 User reports that the mod worked before the 1.26.60 update. Comparison against
 BedrockTools' explicit 26.60 port and launcher's revision-5 rules confirms three
@@ -173,3 +173,12 @@ of actual synthetic camera pose. The user's real feedback source/absolute camera
 bias is not yet measured: this is a targeted fix for reproduced bias paths, not a
 guarantee of rendered Android alignment. Minecraft layouts/signatures stay at the
 0.10.0 1.26.60 profile; SDK pin and package version constraint are unchanged.
+
+## Version 0.10.2 — reduce reported shaking
+
+Controller-only adjustment: 0.12-degree resting dead zone and a blended gentle
+response inside 2 degrees at maximum strength. Large-angle full corrections stay
+unchanged. Tests cover alternating noise and gain mismatch; the small resting
+error is intentional and still checked against actual synthetic target bounds.
+No signature/layout/SDK changes or new HUD output. Android shake is not measured
+by the host model, and vanilla camera bobbing is not modified.
